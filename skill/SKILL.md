@@ -1,0 +1,240 @@
+---
+name: siigo-pyme-excel
+description: Automatiza ExcelSIIGO.exe (CLI de SIIGO Pyme Colombia) para extraer (GET*) e importar (PUSH*) datos entre SIIGO Pyme y archivos Excel (.xlsx). Usar cuando el usuario pida generar movimientos contables, cargar terceros/productos/cuentas, descargar saldos de bodega o cartera, ejecutar informes contables, o sincronizar SIIGO Pyme con otro sistema desde Windows.
+---
+
+# siigo-pyme-excel
+
+Skill para invocar el CLI `ExcelSIIGO.exe` que SIIGO S.A.S. distribuye con su
+software contable **SIIGO Pyme** (Colombia). Permite automatizar la
+importación y exportación de datos entre SIIGO Pyme (on-premise) y archivos
+Excel sin que el modelo tenga que memorizar la sintaxis del CLI.
+
+> **Plataforma soportada**: solo Windows (el CLI es PE32 nativo). En Linux
+> o macOS se requiere Wine o ejecución remota por RDP/PSExec.
+>
+> **SIIGO Pyme ≠ SIIGO Nube**: este skill es para la versión escritorio
+> con `EXCELSIIGO.exe`. Para SIIGO Nube (API REST) usar otro skill.
+
+## 1. Prerrequisitos
+
+Antes de invocar el skill verifica que existan:
+
+1. **SIIGO Pyme instalado** y con la empresa creada (carpeta `C:\SIIWI01\`
+   por defecto, configurable).
+2. **`EXCELSIIGO.exe`** accesible. Por defecto el wrapper lo busca en
+   `C:\Siigo\EXCELSIIGO.exe`. Configurable vía `SIIGO_EXE`.
+3. **Usuario SIIGO con permisos** sobre la empresa (clave de 8 caracteres).
+4. **Licencia SIIGO activa** (la verificación la hace internamente el CLI
+   vía `Actualizador.exe` y `CtrlSIIGOLic.gnt`).
+5. **Carpeta LOGS** escribible (por defecto `C:\SIIWI01\LOGS\`).
+6. **Espacio en disco** suficiente para los .xlsx generados.
+
+Ejecuta primero el validador:
+
+```bash
+bash scripts/check-prereqs.sh
+```
+
+## 2. Configuración
+
+Variables de entorno reconocidas por los wrappers:
+
+| Variable          | Default                  | Descripción                                          |
+|-------------------|--------------------------|------------------------------------------------------|
+| `SIIGO_EXE`       | `C:\Siigo\EXCELSIIGO.exe`| Ruta al binario.                                     |
+| `SIIGO_EMPRESA`   | `C:\SIIWI01\`           | Ruta de la empresa (11 chars, termina en `\`).       |
+| `SIIGO_USUARIO`   | —                        | Usuario SIIGO (8 chars). **Obligatorio**.            |
+| `SIIGO_CLAVE`     | —                        | Clave del usuario. **Obligatorio. Nunca en logs.**   |
+| `SIIGO_NORMA`     | `L`                      | `L` (Local) o `N` (NIIF).                            |
+| `SIIGO_LOGS`      | `C:\SIIWI01\LOGS\`      | Carpeta para archivos .LOG.                          |
+| `SIIGO_ANO`       | año actual               | Año de proceso (4 dígitos).                          |
+| `SIIGO_LANG`      | `es`                     | Idioma mensajes (`es`/`en`).                         |
+
+> ⚠️ **Seguridad**: nunca hardcodees `SIIGO_CLAVE` en scripts. El wrapper
+> enmascara la clave en cualquier log que emita.
+
+## 3. Uso rápido (comandos copy-paste)
+
+Asume que estás en la raíz del skill y que `SIIGO_*` ya están exportadas.
+
+### 3.1 Listar funciones disponibles
+
+```bash
+bash scripts/excel-siigo.sh list
+```
+
+### 3.2 Extraer (GET*) plantillas vacías (sólo encabezados)
+
+Útil para conocer las columnas que SIIGO espera antes de un PUSH*:
+
+```bash
+bash scripts/excel-siigo.sh template GETTER
+# Genera: assets/templates/GETTER_template.xlsx
+```
+
+### 3.3 Extraer movimiento contable de un periodo
+
+```bash
+bash scripts/excel-siigo.sh getmov \
+    --fini 0501 --ffin 0531 \
+    --tipo F --comp 001 002 \
+    --nro 00000000001 99999999999 \
+    --salida C:/SIIWI01/MovimientoContable.xlsx
+```
+
+### 3.4 Importar terceros a SIIGO
+
+```bash
+bash scripts/excel-siigo.sh pushter \
+    --entrada C:/SIIWI01/Terceros.xlsx \
+    --errores C:/SIIWI01/LOGS/ErrorTer.xlsx
+```
+
+> **Operación destructiva**: el wrapper pedirá confirmación interactiva
+> salvo que pases `--yes`. Úsalo sólo cuando estés seguro.
+
+### 3.5 Extraer saldos de bodega
+
+```bash
+bash scripts/excel-siigo.sh getbod \
+    --prod 0010001000001 9999999999999 \
+    --bodega 0001 9999 --mes 12 \
+    --salida C:/SIIWI01/SaldosPorBodega.xlsx
+```
+
+### 3.6 Extraer informe (balance de comprobación por tercero)
+
+```bash
+bash scripts/excel-siigo.sh getinf \
+    --tipo B --tercero 1 9999999999999 \
+    --mes 03 12 \
+    --salida C:/SIIWI01/BALANCEPORTERCEROS.xls
+```
+
+## 4. Catálogo rápido de funciones (las 12 más usadas)
+
+| Función     | GET/PUSH | Módulo              | Params clave                              |
+|-------------|----------|---------------------|-------------------------------------------|
+| `GETMOV`    | GET      | Movimiento contable | fechas, comprobante, cuentas, productos   |
+| `PUSHMOV`   | PUSH     | Movimiento contable | archivo entrada, modifica?, básica?       |
+| `GETTER`    | GET      | Terceros            | rango, clasificación, fechas apertura     |
+| `PUSHTER`   | PUSH     | Terceros            | archivo entrada, log errores              |
+| `GETINV`    | GET      | Inventarios         | rango productos                           |
+| `PUSHINV`   | PUSH     | Inventarios         | archivo entrada, log errores              |
+| `GETCTA`    | GET      | Contabilidad        | rango cuentas (10 dígitos)                |
+| `GETACT`    | GET      | Activos fijos       | rango activos (9 dígitos)                 |
+| `PUSHACT`   | PUSH     | Activos fijos       | archivo entrada, log errores              |
+| `GETSAL`    | GET      | Cartera             | CxC/CxP, rango terceros y cuentas         |
+| `GETBOD`    | GET      | Bodegas             | productos, bodegas, mes corte             |
+| `GETINF`    | GET      | Informes            | tipo (`B`/`BCC`), rango terceros/cuentas  |
+
+Catálogo completo (46 funciones) en `references/functions-catalog.md`.
+
+## 5. Forma del resultado (contrato JSON)
+
+Todos los wrappers imprimen en stdout un JSON con esta forma:
+
+```json
+{
+  "ok": true,
+  "exit_code": 0,
+  "funcion": "GETMOV",
+  "log_path": "C:\\SIIWI01\\LOGS\\ExcelSiigo.log",
+  "log_lines": 42,
+  "log_errors": [],
+  "duration_ms": 1823,
+  "output_file": "C:\\SIIWI01\\MovimientoContable.xlsx",
+  "tail": "..."
+}
+```
+
+En caso de error:
+
+```json
+{
+  "ok": false,
+  "exit_code": 2,
+  "funcion": "GETMOV",
+  "log_path": "C:\\SIIWI01\\LOGS\\ExcelSiigo.log",
+  "log_errors": ["070 Empresa no se encuentra instalada"],
+  "duration_ms": 412,
+  "tail": "070 Empresa no se encuentra instalada"
+}
+```
+
+## 6. Errores típicos (resumen)
+
+| Código/Patrón | Significado                                       | Solución                                              |
+|---------------|---------------------------------------------------|-------------------------------------------------------|
+| `070`         | Empresa no instalada en la ruta                  | Verificar `SIIGO_EMPRESA` apunta a empresa válida     |
+| `Acceso denegado` | Permisos insuficientes                        | Ejecutar como usuario con permisos sobre la empresa   |
+| `Archivo no encontrado` | Ruta de entrada .xlsx inexistente     | Verificar `--entrada` o `--salida`                    |
+| `Licencia vencida` | Licencia SIIGO caducada                      | Renovar licencia; correr `Actualizador.exe`           |
+| Salida vacía o .xlsx corrupto | Proceso cortado a media ejecución | Revisar el .LOG; liberar memoria; reintentar          |
+
+Tabla completa y procedimientos de recuperación en `references/errors.md`.
+
+## 7. Seguridad y confirmación de operaciones destructivas
+
+Cualquier función `PUSH*` (importa datos al SIIGO):
+
+- **Modifica la base de la empresa**.
+- Por defecto el wrapper **pide confirmación interactiva** (`--yes` para
+  saltarla).
+- Si la variable de entorno `SIIGO_AUTO_CONFIRM=1` está activa, salta la
+  confirmación (útil para pipelines CI/CD; no recomendado en producción).
+- El .LOG se conserva siempre y se puede auditar con `parse-log.py`.
+
+## 8. Codificación y rutas con caracteres especiales
+
+- El manual oficial (`C:\Siigo\ExcelSIIGO-Ayuda.LOG`) está en **Windows-1252**.
+  Los acentos aparecen como `A�o`, `Funci�n`, etc. El skill normaliza todo
+  a UTF-8.
+- Las rutas con espacios o tildes (ej. `C:\Mi Empresa 2025\`) deben
+  pasarse **siempre entre comillas dobles** en Bash. El wrapper lo hace
+  automáticamente.
+
+Más detalles en `references/encoding.md`.
+
+## 9. Cuándo NO usar este skill
+
+- **SIIGO Nube** (API REST). Usar el conector HTTP correspondiente.
+- **SIIGO Empresarial** (versión enterprise). El CLI es distinto; este
+  skill está orientado a Pyme.
+- **Lectura directa de la base de datos SIIGO** (Access/SQL Anywhere). El
+  CLI es la vía soportada.
+- **macOS/Linux sin Wine**. No soportado oficialmente.
+
+## 10. Mantenimiento
+
+Cuando SIIGO publique una nueva versión de `EXCELSIIGO.exe`:
+
+1. Ejecuta `EXCELSIIGO.exe` sin empresa → captura el manual actualizado.
+2. Sustituye `references/excel-siigo-help.md` con la nueva versión.
+3. Actualiza `references/functions-catalog.md` si hay funciones nuevas o
+   params que cambiaron.
+4. Compara con `git diff` antes de commitear.
+5. Taggea nueva versión (`v0.2.0`, etc.).
+
+## 11. Estructura del repositorio
+
+```
+siigo-pyme-excel/
+├── SKILL.md
+├── README.md
+├── LICENSE
+├── references/        # docs cargables bajo demanda
+├── scripts/           # wrappers ejecutables
+├── assets/templates/  # plantillas .xlsx generadas dinámicamente
+└── docs/              # SDD y notas de diseño
+```
+
+## 12. Referencias internas
+
+- `references/excel-siigo-help.md` — copia completa del manual oficial.
+- `references/functions-catalog.md` — las 46 funciones documentadas.
+- `references/errors.md` — códigos de error y recuperación.
+- `references/encoding.md` — Windows-1252, comillas, rutas largas.
+- `references/siigo-pyme-concepts.md` — glosario de términos SIIGO.
+- `docs/SDD-EXPLORE.md` y `docs/SDD-PROPOSE.md` — diseño del skill.

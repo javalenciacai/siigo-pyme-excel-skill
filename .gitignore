@@ -1,0 +1,35 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Generados
+*.xlsx
+*.xls
+*.log
+!references/excel-siigo-help.md
+assets/templates/*.xlsx
+build/
+dist/
+
+# SIIGO sensibles
+SIIGO_CLAVE=*
+*.siigo.key
+
+# Archivos generados por el CLI al ejecutarse
+EXCELSIIGO.CFG
+
+# Artefacto de empaquetado (regenerable con package_skill.py)
+skill.skill
