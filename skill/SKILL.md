@@ -1,6 +1,6 @@
 ---
 name: siigo-pyme-excel
-description: Automatiza ExcelSIIGO.exe (CLI de SIIGO Pyme Colombia) para extraer (GET*) e importar (PUSH*) datos entre SIIGO Pyme y archivos Excel (.xlsx). Usar cuando el usuario pida generar movimientos contables, cargar terceros/productos/cuentas, descargar saldos de bodega o cartera, ejecutar informes contables, o sincronizar SIIGO Pyme con otro sistema desde Windows.
+description: Use this skill whenever the user needs to extract data from SIIGO Pyme (Colombia) to Excel, or import Excel data into SIIGO Pyme, using the proprietary EXCELSIIGO.exe CLI. Triggers on requests like "sacar un listado de SIIGO", "cargar terceros a SIIGO", "generar movimientos contables desde un Excel", "descargar saldos de bodega", "importar productos a SIIGO Pyme", "ejecutar EXCELSIIGO.exe", "sincronizar SIIGO con otro sistema", or any mention of the SIIGO Pyme on-premise Windows ERP and its Excel interface. Wraps the 46 GET*/PUSH* functions of EXCELSIIGO.exe with Bash/PowerShell/Python wrappers, JSON output, prereq validation, log parsing, and xlsx template generation. Do NOT use for SIIGO Nube (API REST) or SIIGO Empresarial — only for SIIGO Pyme on Windows.
 ---
 
 # siigo-pyme-excel
