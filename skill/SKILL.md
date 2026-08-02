@@ -31,7 +31,9 @@ Antes de invocar el skill verifica que existan:
 4. **Usuario SIIGO con permisos** sobre la empresa (clave de 8 caracteres).
 5. **Licencia SIIGO activa** (la verificación la hace internamente el CLI
    vía `Actualizador.exe` y `CtrlSIIGOLic.gnt`).
-6. **Carpeta LOGS** escribible (por defecto `C:\SIIWI01\LOGS\`).
+6. **Carpeta LOGS** escribible. Por defecto los logs van al mismo
+   directorio que el archivo de salida (`--salida`); también puedes
+   configurar `SIIGO_LOGS` o pasar `--logs` al wrapper.
 7. **Espacio en disco** suficiente para los .xlsx generados.
 
 Ejecuta primero el validador:
