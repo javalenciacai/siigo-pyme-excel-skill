@@ -44,7 +44,16 @@ from typing import Optional
 
 
 def parse_filepath(raw: str) -> dict:
-    """Parsea el contenido crudo de filepath.txt."""
+    """Parsea el contenido crudo de filepath.txt.
+
+    IMPORTANTE: filepath.txt NO es un índice de todas las empresas
+    disponibles. Es un puntero a UNA sola empresa — la empresa a la que
+    esta instalación específica de EXCELSIIGO.exe está apuntando.
+
+    El resto de empresas (si existen) viven en rutas hermanas
+    SIIWI02, SIIWI03, etc. o en otras unidades/discos. Para descubrirlas
+    hay que escanear el filesystem, no leer filepath.txt.
+    """
     partes = raw.split("::")
     ruta_local = partes[0].strip() if len(partes) > 0 else ""
     ruta_unc = partes[1].strip() if len(partes) > 1 else ""
@@ -54,9 +63,9 @@ def parse_filepath(raw: str) -> dict:
     m = re.search(r"SIIWI(\d+)", ruta_local, re.IGNORECASE)
     empresa_id = m.group(1) if m else ""
 
-    # Construir lista de empresas (por ahora filepath.txt solo declara 1,
-    # pero el formato soporta múltiples separadas por algún delimitador que
-    # no está documentado oficialmente; reportamos 1 siempre).
+    # filepath.txt solo declara UNA empresa (la de esta instalación).
+    # Devolver como lista de 1 elemento para mantener compatibilidad
+    # con consumidores que esperan una lista.
     empresas = []
     if ruta_local or ruta_unc:
         empresas.append({
@@ -70,7 +79,12 @@ def parse_filepath(raw: str) -> dict:
         "empresa_local": ruta_local,
         "empresa_unc": ruta_unc,
         "empresa_id": empresa_id,
-        "empresas_disponibles": empresas,
+        "empresas_declaradas": empresas,  # siempre 1, lo del filepath.txt
+        "_nota": (
+            "filepath.txt solo declara 1 empresa (la de esta instalación). "
+            "Otras empresas pueden existir en rutas SIIWI02, SIIWI03, etc. "
+            "pero no aparecen aquí — hay que escanear el filesystem."
+        ),
     }
 
 
@@ -140,7 +154,7 @@ def main():
     match = None
     if args.contains:
         needle = args.contains.lower()
-        for emp in parsed["empresas_disponibles"]:
+        for emp in parsed["empresas_declaradas"]:
             if (needle in emp["id"].lower()
                 or needle in emp["ruta"].lower()
                 or needle in emp["unc"].lower()):
@@ -154,7 +168,7 @@ def main():
     if args.empresa:
         emp_norm = args.empresa.replace("/", "\\").lower().rstrip("\\")
         match_emp = None
-        for emp in parsed["empresas_disponibles"]:
+        for emp in parsed["empresas_declaradas"]:
             if emp["ruta"].replace("\\", "").lower().rstrip("\\") == emp_norm.replace("\\", ""):
                 match_emp = emp
                 break

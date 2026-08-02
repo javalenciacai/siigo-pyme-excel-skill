@@ -42,9 +42,33 @@ bash scripts/check-prereqs.sh
 ## 1.1 Validación de empresa contra filepath.txt
 
 Antes de ejecutar **cualquier** GET/PUSH, el wrapper valida que la empresa
-solicitada (`SIIGO_EMPRESA`) aparece en el `filepath.txt` que acompaña al
-`EXCELSIIGO.exe`. Si no coincide, **la ejecución se bloquea** con un mensaje
-claro listando las empresas disponibles.
+solicitada (`SIIGO_EMPRESA`) coincide con la ruta declarada en el
+`filepath.txt` que acompaña al `EXCELSIIGO.exe`. Si no coincide, **la
+ejecución se bloquea** con un mensaje claro indicando a qué empresa apunta
+esa instalación, y recordando que `filepath.txt` solo referencia UNA
+empresa — para encontrar otras hay que buscar en otras rutas
+`SIIWI*` o en otras instalaciones de SIIGO.
+
+Ejemplo de bloqueo (pides `Z:\SIIWI99\`, el `EXCELSIIGO.exe` apunta a `Z:\SIIWI01\`):
+
+```
+╔════════════════════════════════════════════════════════════════════╗
+║  ADVERTENCIA: la empresa solicitada NO coincide con filepath.txt  ║
+╚════════════════════════════════════════════════════════════════════╝
+
+SIIGO_EMPRESA:  Z:\SIIWI99\
+
+Empresa declarada en el filepath.txt de este EXCELSIIGO.exe:
+  Esta instalación de EXCELSIIGO.exe apunta a:
+    - id=01  ruta=Z:\SIIWI01\  unc=\\127.0.0.1\inmunotek
+
+RECORDATORIO: filepath.txt NO lista todas las empresas — solo apunta
+a UNA (la de esta instalación). Las demás pueden existir en otras
+rutas SIIWI02, SIIWI03, ... o en otras unidades. Para descubrirlas:
+  - Listar carpetas C:\SIIWInn\ (o Z:\SIIWInn\ si la unidad está montada)
+  - Buscar otros EXCELSIIGO.exe: C:\Siigo2\, C:\Siigo3\, ...
+  - Cada instalación tiene SU PROPIO filepath.txt apuntando a SU empresa
+```
 
 Si necesitas saltarte la validación (porque tu instalación tiene un layout
 no estándar), pasa `--force`:

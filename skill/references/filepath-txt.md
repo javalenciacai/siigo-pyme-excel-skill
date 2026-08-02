@@ -4,8 +4,17 @@
 
 `filepath.txt` es un archivo de texto plano que SIIGO Pyme crea **dentro de
 la carpeta de instalación de cada copia del ejecutable** (`C:\Siigo\`,
-`C:\Siigo2\`, etc.). Contiene la ruta UNC/absoluta de la carpeta de la
-empresa a la que esa instalación está apuntando.
+`C:\Siigo2\`, etc.). Contiene la ruta absoluta de **UNA sola** empresa —
+la empresa a la que esa instalación específica del `EXCELSIIGO.exe`
+está apuntando.
+
+⚠️ **No es un índice** de todas las empresas disponibles. Si tienes 5
+empresas SIIGO en tu organización, cada `EXCELSIIGO.exe` tiene su
+propio `filepath.txt` apuntando a SU empresa. El resto de empresas
+viven en rutas hermanas (`SIIWI02`, `SIIWI03`, ...) o en otras
+unidades, pero **NO aparecen en este archivo**. Para descubrirlas
+hay que escanear el filesystem (`C:\SIIWInn\`, `Z:\SIIWInn\`, etc.) o
+buscar otros `EXCELSIIGO.exe` en otras carpetas de instalación.
 
 ## Formato
 
@@ -55,19 +64,31 @@ depender de filepath.txt en tiempo de ejecución).
 
 ## Diagnóstico de "no encuentra la empresa"
 
-Si el CLI devuelve `070 Empresa no se encuentra instalada`:
+Si el CLI devuelve `070 Empresa no se encuentra instalada`, el primer
+paso es descubrir DÓNDE están tus otras empresas SIIGO. Como
+`filepath.txt` no es un índice, escanea el filesystem:
 
 ```bash
-# 1. Ver filepath.txt
+# 1. Ver filepath.txt de cada instalación
 cat /c/Siigo/filepath.txt
 cat /c/Siigo2/filepath.txt
+cat /c/Siigo3/filepath.txt
 
-# 2. Verificar que la ruta destino existe
-ls "<ruta_del_filepath.txt>"
+# 2. Buscar todas las carpetas de empresa SIIWI* en el sistema
+#    (ajusta el path base según tu entorno: C:\, Z:\, etc.)
+ls /c/ | grep -iE "SIIWI"        # en C:\
+ls /z/ 2>/dev/null | grep -iE "SIIWI"  # en Z: (si está montada)
 
-# 3. Si es una unidad de red, verificar que está montada
-#    en PowerShell:
-#    Get-PSDrive | Where-Object {$_.DisplayRoot -like '*inmunotek*'}
+# 3. Buscar otros EXCELSIIGO.exe instalados
+find /c -name "EXCELSIIGO.exe" 2>/dev/null
+```
+
+Cada `filepath.txt` te dice a qué empresa apunta ese ejecutable. Una vez
+identificada la correcta, configura:
+
+```bash
+export SIIGO_EXE='C:\Siigo2\EXCELSIIGO.exe'    # la instalación correcta
+export SIIGO_EMPRESA='Z:\SIIWI03\'           # la ruta del filepath.txt
 ```
 
 ## Multi-empresa en el mismo equipo

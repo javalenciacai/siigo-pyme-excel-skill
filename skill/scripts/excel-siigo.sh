@@ -207,38 +207,47 @@ print('YES' if d.get('empresa_match_found', False) else 'NO')
   if [[ "$match_found" != "YES" ]]; then
     echo "" >&2
     echo "╔════════════════════════════════════════════════════════════════════╗" >&2
-    echo "║  ADVERTENCIA: la empresa solicitada NO aparece en filepath.txt    ║" >&2
+    echo "║  ADVERTENCIA: la empresa solicitada NO coincide con filepath.txt  ║" >&2
     echo "╚════════════════════════════════════════════════════════════════════╝" >&2
     echo "" >&2
     echo "SIIGO_EMPRESA:  $SIIGO_EMPRESA" >&2
     echo "" >&2
-    echo "Empresas declaradas en el filepath.txt de este EXCELSIIGO.exe:" >&2
-    # Imprimir lista de empresas (de archivo) con python
-  local list_file="$log_posix.list"
-  if command -v cygpath >/dev/null 2>&1; then
-    local list_file_win; list_file_win="$(cygpath -w "$list_file")"
-  else
-    local list_file_win="$list_file"
-  fi
-  python3 - "$py_out_file_win" >"$list_file_win" 2>/dev/null <<'PYEOF'
-import json, sys
-with open(sys.argv[1], 'r', encoding='utf-8') as f:
-    d = json.load(f)
-for e in d.get('empresas_disponibles', []):
-    print(f"  - id={e['id']}  ruta={e['ruta']}  unc={e['unc']}")
-PYEOF
-  if [[ -s "$list_file_win" ]]; then
-    cat "$list_file_win" >&2
-  else
-    echo "  (no se pudo parsear la lista)" >&2
-  fi
+    echo "Empresa declarada en el filepath.txt de este EXCELSIIGO.exe:" >&2
+
+    # Imprimir la empresa declarada (es UNA sola, no un índice)
+    # Usamos un script Python en disco para evitar problemas de escape
+    # de la ruta Windows al pasarla como argumento.
+    local list_script="$log_posix.list_script.py"
+    local list_script_win
+    if command -v cygpath >/dev/null 2>&1; then
+      list_script_win="$(cygpath -w "$list_script")"
+    else
+      list_script_win="$list_script"
+    fi
+    {
+      echo "import json, sys"
+      echo "with open(sys.argv[1], 'r', encoding='utf-8') as f:"
+      echo "    d = json.load(f)"
+      echo "print('  Esta instalación de EXCELSIIGO.exe apunta a:')"
+      echo "for e in d.get('empresas_declaradas', []):"
+      echo "    print(f\"    - id={e['id']}  ruta={e['ruta']}  unc={e['unc']}\")"
+    } > "$list_script_win"
+    python3 "$list_script_win" "$py_out_file_win" 2>/dev/null
+    if [[ $? -ne 0 ]]; then
+      echo "  (no se pudo parsear el filepath.txt)" >&2
+    fi
     echo "" >&2
-    echo "Posibles causas:" >&2
-    echo "  1. La empresa '$SIIGO_EMPRESA' no existe en esta instalación." >&2
-    echo "  2. Estás apuntando a la carpeta equivocada." >&2
-    echo "  3. Necesitas otra instalación de SIIGO (C:\\Siigo2\\, C:\\Siigo3\\, ...)." >&2
+    echo "RECORDATORIO: filepath.txt NO lista todas las empresas — solo apunta" >&2
+    echo "a UNA (la de esta instalación). Las demás pueden existir en otras" >&2
+    echo "rutas SIIWI02, SIIWI03, ... o en otras unidades. Para descubrirlas:" >&2
+    echo "  - Listar carpetas C:\\SIIWInn\\ (o Z:\\SIIWInn\\ si la unidad está montada)" >&2
+    echo "  - Buscar otros EXCELSIIGO.exe: C:\\Siigo2\\, C:\\Siigo3\\, ..." >&2
+    echo "  - Cada instalación tiene SU PROPIO filepath.txt apuntando a SU empresa" >&2
     echo "" >&2
-    echo "Para forzar la ejecución sabiendo lo que haces, pasa --force." >&2
+    echo "Si la empresa '$(basename "$(echo "$SIIGO_EMPRESA" | tr -d '\\')")' existe en otra" >&2
+    echo "instalación de SIIGO, cambia SIIGO_EXE y SIIGO_EMPRESA para apuntar ahí." >&2
+    echo "" >&2
+    echo "Para forzar la ejecución con esta configuración, pasa --force." >&2
     return 1
   fi
   return 0
