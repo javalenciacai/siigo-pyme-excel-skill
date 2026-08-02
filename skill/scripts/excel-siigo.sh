@@ -150,6 +150,100 @@ verify_exe() {
   fi
 }
 
+# Valida que la empresa solicitada (SIIGO_EMPRESA) está declarada en el
+# filepath.txt que acompaña al EXCELSIIGO.exe. Si no, emite una advertencia
+# bloqueante (a menos que se pase --force). Esto evita apuntar a una
+# empresa inexistente y obtener un .xlsx vacío o un error 070 confuso.
+validate_company() {
+  # Si el flag --force está activo, saltar
+  if [[ "${SIIGO_FORCE:-0}" == "1" ]]; then
+    return 0
+  fi
+
+  local py_script py_log py_out
+  if command -v cygpath >/dev/null 2>&1; then
+    py_script="$(cygpath -w "${SCRIPT_DIR}/parse-filepath.py")"
+  else
+    py_script="${SCRIPT_DIR}/parse-filepath.py"
+  fi
+
+  # Llamar al parser y capturar el JSON
+  if command -v cygpath >/dev/null 2>&1; then
+    local exe_win; exe_win="$(cygpath -w "$SIIGO_EXE")"
+  else
+    local exe_win="$SIIGO_EXE"
+  fi
+
+  # Llamar al parser y guardar el JSON en un archivo temporal
+  local py_out_file="$log_posix.validate"
+  if command -v cygpath >/dev/null 2>&1; then
+    local py_out_file_win; py_out_file_win="$(cygpath -w "$py_out_file")"
+  else
+    local py_out_file_win="$py_out_file"
+  fi
+
+  python3 "$py_script" --exe "$exe_win" --empresa "$SIIGO_EMPRESA" >"$py_out_file_win" 2>/dev/null
+  if [[ ! -s "$py_out_file_win" ]]; then
+    # Si falla el parser, no bloqueamos — sólo avisamos
+    echo "ADVERTENCIA: no se pudo leer filepath.txt para validar la empresa. Continuando..." >&2
+    return 0
+  fi
+
+  # Extraer match_found con python (en archivo para evitar problemas de escape)
+  local match_status_file="$log_posix.match"
+  if command -v cygpath >/dev/null 2>&1; then
+    local match_status_file_win; match_status_file_win="$(cygpath -w "$match_status_file")"
+  else
+    local match_status_file_win="$match_status_file"
+  fi
+  python3 -c "
+import json, sys
+with open(r'$py_out_file_win', 'r', encoding='utf-8') as f:
+    d = json.load(f)
+print('YES' if d.get('empresa_match_found', False) else 'NO')
+" > "$match_status_file_win" 2>/dev/null
+
+  local match_found; match_found="$(cat "$match_status_file_win" 2>/dev/null | tr -d '\r\n ')"
+  if [[ "$match_found" != "YES" ]]; then
+    echo "" >&2
+    echo "╔════════════════════════════════════════════════════════════════════╗" >&2
+    echo "║  ADVERTENCIA: la empresa solicitada NO aparece en filepath.txt    ║" >&2
+    echo "╚════════════════════════════════════════════════════════════════════╝" >&2
+    echo "" >&2
+    echo "SIIGO_EMPRESA:  $SIIGO_EMPRESA" >&2
+    echo "" >&2
+    echo "Empresas declaradas en el filepath.txt de este EXCELSIIGO.exe:" >&2
+    # Imprimir lista de empresas (de archivo) con python
+  local list_file="$log_posix.list"
+  if command -v cygpath >/dev/null 2>&1; then
+    local list_file_win; list_file_win="$(cygpath -w "$list_file")"
+  else
+    local list_file_win="$list_file"
+  fi
+  python3 - "$py_out_file_win" >"$list_file_win" 2>/dev/null <<'PYEOF'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as f:
+    d = json.load(f)
+for e in d.get('empresas_disponibles', []):
+    print(f"  - id={e['id']}  ruta={e['ruta']}  unc={e['unc']}")
+PYEOF
+  if [[ -s "$list_file_win" ]]; then
+    cat "$list_file_win" >&2
+  else
+    echo "  (no se pudo parsear la lista)" >&2
+  fi
+    echo "" >&2
+    echo "Posibles causas:" >&2
+    echo "  1. La empresa '$SIIGO_EMPRESA' no existe en esta instalación." >&2
+    echo "  2. Estás apuntando a la carpeta equivocada." >&2
+    echo "  3. Necesitas otra instalación de SIIGO (C:\\Siigo2\\, C:\\Siigo3\\, ...)." >&2
+    echo "" >&2
+    echo "Para forzar la ejecución sabiendo lo que haces, pasa --force." >&2
+    return 1
+  fi
+  return 0
+}
+
 # Construir comando base
 build_base_cmd() {
   local args=()
@@ -218,6 +312,9 @@ run_excel_siigo() {
     read -r -p "¿Confirmar ejecución? [s/N] " resp
     [[ "$resp" =~ ^[sSyY]$ ]] || { echo "Cancelado."; return 2; }
   fi
+
+  # Validación: empresa debe estar en filepath.txt (a menos que --force)
+  validate_company || return 1
 
   # Ejecutar el .exe. Estrategia cross-shell:
   #   MSYS / Git Bash en Windows: invocar el .exe directamente pasando los
@@ -300,6 +397,7 @@ parse_args() {
       --clave)   SIIGO_CLAVE="$2"; shift 2 ;;
       --logs)    SIIGO_LOGS="$2"; shift 2 ;;
       --yes)     SIIGO_AUTO_CONFIRM=1; shift ;;
+      --force)   SIIGO_FORCE=1; shift ;;
       --fini)    EXTRA+=("$2"); shift 2 ;;
       --ffin)    EXTRA+=("$2"); shift 2 ;;
       --tipo)    EXTRA+=("$2"); shift 2 ;;

@@ -24,17 +24,43 @@ Antes de invocar el skill verifica que existan:
    por defecto, configurable).
 2. **`EXCELSIIGO.exe`** accesible. Por defecto el wrapper lo busca en
    `C:\Siigo\EXCELSIIGO.exe`. Configurable vía `SIIGO_EXE`.
-3. **Usuario SIIGO con permisos** sobre la empresa (clave de 8 caracteres).
-4. **Licencia SIIGO activa** (la verificación la hace internamente el CLI
+3. **`filepath.txt`** junto al `EXCELSIIGO.exe` (lo crea SIIGO al instalar).
+   El wrapper lo lee automáticamente para validar que la empresa solicitada
+   está declarada. Ver `references/filepath-txt.md`.
+4. **Usuario SIIGO con permisos** sobre la empresa (clave de 8 caracteres).
+5. **Licencia SIIGO activa** (la verificación la hace internamente el CLI
    vía `Actualizador.exe` y `CtrlSIIGOLic.gnt`).
-5. **Carpeta LOGS** escribible (por defecto `C:\SIIWI01\LOGS\`).
-6. **Espacio en disco** suficiente para los .xlsx generados.
+6. **Carpeta LOGS** escribible (por defecto `C:\SIIWI01\LOGS\`).
+7. **Espacio en disco** suficiente para los .xlsx generados.
 
 Ejecuta primero el validador:
 
 ```bash
 bash scripts/check-prereqs.sh
 ```
+
+## 1.1 Validación de empresa contra filepath.txt
+
+Antes de ejecutar **cualquier** GET/PUSH, el wrapper valida que la empresa
+solicitada (`SIIGO_EMPRESA`) aparece en el `filepath.txt` que acompaña al
+`EXCELSIIGO.exe`. Si no coincide, **la ejecución se bloquea** con un mensaje
+claro listando las empresas disponibles.
+
+Si necesitas saltarte la validación (porque tu instalación tiene un layout
+no estándar), pasa `--force`:
+
+```bash
+bash scripts/excel-siigo.sh getter --fini 0 --ffin 99999999 \
+    --salida C:/temp/t.xlsx --force --yes
+```
+
+Inspeccionar el filepath.txt manualmente:
+
+```bash
+python scripts/parse-filepath.py --exe C:/Siigo/EXCELSIIGO.exe
+```
+
+Más detalles en `references/filepath-txt.md`.
 
 ## 2. Configuración
 
@@ -237,4 +263,5 @@ siigo-pyme-excel/
 - `references/errors.md` — códigos de error y recuperación.
 - `references/encoding.md` — Windows-1252, comillas, rutas largas.
 - `references/siigo-pyme-concepts.md` — glosario de términos SIIGO.
+- `references/filepath-txt.md` — cómo el CLI localiza la empresa (filepath.txt).
 - `docs/SDD-EXPLORE.md` y `docs/SDD-PROPOSE.md` — diseño del skill.

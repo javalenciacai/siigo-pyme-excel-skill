@@ -62,11 +62,13 @@ COLUMNAS_CONOCIDAS = {
 
 
 def main():
+    # Default: ConDatos=S (datos reales). El usuario normalmente quiere ver
+    # los datos, no una plantilla vacía. Si quiere la plantilla, pasa --offline.
     ap = argparse.ArgumentParser()
     ap.add_argument("funcion", help="GETTER, GETMOV, PUSHTER, ...")
-    ap.add_argument("--salida", required=True, help="Ruta del .xlsx a generar")
     ap.add_argument("--offline", action="store_true",
-                    help="No invoca el CLI; usa estructura conocida de columnas")
+                    help="No invoca el CLI; usa estructura conocida de columnas (plantilla vacía)")
+    ap.add_argument("--salida", required=True, help="Ruta del .xlsx a generar")
     ap.add_argument("--fini"); ap.add_argument("--ffin"); ap.add_argument("--tipo")
     ap.add_argument("--tercero", nargs=2, metavar=("INI","FIN"))
     ap.add_argument("--producto",nargs=2, metavar=("INI","FIN"))
@@ -76,6 +78,7 @@ def main():
     funcion = args.funcion.upper()
 
     if args.offline:
+        # Modo offline: generar plantilla con encabezados (ConDatos=N)
         cols = COLUMNAS_CONOCIDAS.get(funcion)
         if not cols:
             print(f"ERROR: no conozco las columnas de {funcion} en modo offline.", file=sys.stderr)
@@ -97,14 +100,14 @@ def main():
         print(f"Plantilla offline generada: {args.salida} ({len(cols)} columnas)")
         return 0
 
-    # Modo online: invocar CLI con ConDatos=N
+    # Modo online: invocar CLI con ConDatos=S (datos por defecto)
     try:
         from excel_siigo import run, Config
     except ImportError:
         sys.path.insert(0, str(Path(__file__).parent))
         from excel_siigo import run, Config
 
-    params = ["N"]  # ConDatos=N = sólo encabezados
+    params = ["S"]  # ConDatos=S = datos reales (default)
     if args.fini:    params.append(args.fini)
     if args.ffin:    params.append(args.ffin)
     if args.tipo:    params.append(args.tipo)

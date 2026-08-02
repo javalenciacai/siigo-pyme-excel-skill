@@ -27,6 +27,30 @@
       ]
     },
     {
+      "id": 9,
+      "name": "validar-empresa-contra-filepath",
+      "prompt": "Mi empresa en SIIGO está en Z:\\SIIWI03\\. ¿Puedes sacarme un listado de productos?",
+      "expected_output": "El agente configura SIIGO_EMPRESA='Z:\\SIIWI03\\' y al ejecutar el wrapper, el validador detecta que la empresa no está en el filepath.txt de la instalación, BLOQUEA la ejecución y muestra un mensaje claro listando las empresas disponibles. NO ejecuta el .exe a ciegas.",
+      "files": [],
+      "expectations": [
+        "Wrapper blocks the call with an explicit warning before invoking EXCELSIIGO.exe",
+        "Lists the companies declared in the filepath.txt",
+        "Suggests checking if Z:\\SIIWI03\\ exists or pointing to the correct installation"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "generar-xlsx-con-datos-por-defecto",
+      "prompt": "Bájame todos los terceros de mi SIIGO a un Excel que pueda abrir.",
+      "expected_output": "El agente usa `excel-siigo.sh getter` con ConDatos=S (default) y entrega un .xlsx con los terceros reales, no una plantilla vacía. Si el usuario pidiera explícitamente la plantilla, entonces sí usa `--offline`.",
+      "files": [],
+      "expectations": [
+        "ConDatos=S is the default (datos reales)",
+        "The XLSX is generated with real third-party data, not just headers",
+        "If the user explicitly asked for a template, then --offline is appropriate"
+      ]
+    },
+    {
       "id": 3,
       "name": "saldos-bodega",
       "prompt": "Quiero los saldos de inventario por bodega del cierre de diciembre 2023 para cruzar con mi sistema de BI.",
