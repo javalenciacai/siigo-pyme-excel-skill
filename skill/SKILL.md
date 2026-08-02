@@ -20,13 +20,14 @@ Excel sin que el modelo tenga que memorizar la sintaxis del CLI.
 
 Antes de invocar el skill verifica que existan:
 
-1. **SIIGO Pyme instalado** y con la empresa creada (carpeta `C:\SIIWI01\`
-   por defecto, configurable).
+1. **SIIGO Pyme instalado** y con la empresa creada.
 2. **`EXCELSIIGO.exe`** accesible. Por defecto el wrapper lo busca en
    `C:\Siigo\EXCELSIIGO.exe`. Configurable vía `SIIGO_EXE`.
 3. **`filepath.txt`** junto al `EXCELSIIGO.exe` (lo crea SIIGO al instalar).
    El wrapper lo lee automáticamente para validar que la empresa solicitada
-   está declarada. Ver `references/filepath-txt.md`.
+   coincide con la ruta declarada. Ver `references/filepath-txt.md`.
+   **Importante**: la ruta declarada suele ser `Z:\SIIWI0n\`, NO `C:\SIIWI0n\`.
+   Usa `bash scripts/excel-siigo.sh list` para ver la ruta detectada.
 4. **Usuario SIIGO con permisos** sobre la empresa (clave de 8 caracteres).
 5. **Licencia SIIGO activa** (la verificación la hace internamente el CLI
    vía `Actualizador.exe` y `CtrlSIIGOLic.gnt`).
@@ -93,7 +94,7 @@ Variables de entorno reconocidas por los wrappers:
 | Variable          | Default                  | Descripción                                          |
 |-------------------|--------------------------|------------------------------------------------------|
 | `SIIGO_EXE`       | `C:\Siigo\EXCELSIIGO.exe`| Ruta al binario.                                     |
-| `SIIGO_EMPRESA`   | `C:\SIIWI01\`           | Ruta de la empresa (11 chars, termina en `\`).       |
+| `SIIGO_EMPRESA`   | *(sin default)*          | **Debes configurarlo** usando `parse-filepath.py` o `bash excel-siigo.sh list` (muestra la ruta detectada del filepath.txt). Típicamente `Z:\SIIWI01\`, **NO** `C:\SIIWI01\`. |
 | `SIIGO_USUARIO`   | —                        | Usuario SIIGO (8 chars). **Obligatorio**.            |
 | `SIIGO_CLAVE`     | —                        | Clave del usuario. **Obligatorio. Nunca en logs.**   |
 | `SIIGO_NORMA`     | `L`                      | `L` (Local) o `N` (NIIF).                            |

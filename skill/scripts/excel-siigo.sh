@@ -26,7 +26,10 @@ fi
 SKILL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 SIIGO_EXE="${SIIGO_EXE:-C:\\Siigo\\EXCELSIIGO.exe}"
-SIIGO_EMPRESA="${SIIGO_EMPRESA:-C:\\SIIWI01\\}"
+# SIIGO_EMPRESA NO tiene default seguro. Cada instalación apunta a una
+# ruta distinta (típicamente Z:\\SIIWI01\\, no C:\\SIIWI01\\). Usa
+# `parse-filepath.py --exe <SIIGO_EXE>` para descubrir la ruta correcta.
+SIIGO_EMPRESA="${SIIGO_EMPRESA:-}"
 SIIGO_USUARIO="${SIIGO_USUARIO:-}"
 SIIGO_CLAVE="${SIIGO_CLAVE:-}"
 SIIGO_NORMA="${SIIGO_NORMA:-L}"
@@ -137,6 +140,35 @@ print_list() {
     [[ "$f" == PUSH* ]] && kind="PUSH"
     printf "  %-12s  %s\n" "$f" "$kind"
   done
+  echo
+  echo "Empresa detectada (de filepath.txt junto a SIIGO_EXE):"
+  echo
+  local exe_win
+  if command -v cygpath >/dev/null 2>&1; then
+    exe_win="$(cygpath -w "$SIIGO_EXE" 2>/dev/null)"
+  else
+    exe_win="$SIIGO_EXE"
+  fi
+  local py_script
+  if command -v cygpath >/dev/null 2>&1; then
+    py_script="$(cygpath -w "${SCRIPT_DIR}/parse-filepath.py" 2>/dev/null)"
+  else
+    py_script="${SCRIPT_DIR}/parse-filepath.py"
+  fi
+  python3 "$py_script" --exe "$exe_win" 2>/dev/null | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if d.get('exists'):
+    for e in d.get('empresas_declaradas', []):
+        print(f'  ruta:  {e[\"ruta\"]}')
+        print(f'  unc:   {e[\"unc\"]}')
+        print(f'  id:    {e[\"id\"]}')
+    print()
+    print('Para usarla, exporta:')
+    print(f'  export SIIGO_EMPRESA=\"{d[\"empresas_declaradas\"][0][\"ruta\"]}\"')
+else:
+    print('  (no se encontro filepath.txt junto a SIIGO_EXE)')
+" 2>/dev/null || echo "  (no se pudo parsear el filepath.txt)"
 }
 
 # Verificar que el .exe existe

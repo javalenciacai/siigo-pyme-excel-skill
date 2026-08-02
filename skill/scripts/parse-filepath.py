@@ -3,41 +3,34 @@
 """
 parse-filepath.py — Lee el filepath.txt de una instalación SIIGO Pyme.
 
-Formato del archivo:
-    Z:\\SIIWI01\\::\\\\127.0.0.1\\inmunotek::
+Funcionalidad principal: parsea el archivo que SIIGO Pyme crea junto al
+EXCELSIIGO.exe y devuelve la ruta de la empresa a la que apunta esa
+instalación. Soporta dos modos de uso:
+
+1) Modo validación (usado internamente por excel-siigo.sh):
+       python parse-filepath.py --exe C:/Siigo/EXCELSIIGO.exe \
+                                 --empresa Z:/SIIWI01/
+   Devuelve JSON con `empresa_match_found` (True/False).
+
+2) Modo detección (útil para que el usuario descubra la ruta correcta):
+       python parse-filepath.py --exe C:/Siigo/EXCELSIIGO.exe
+   Imprime la ruta detectada y un comando bash listo para source.
+
+Formato del archivo (single pointer, NO es un índice):
+    Z:\\SIIWI01\\::\\127.0.0.1\inmunotek::
 
 Tres campos separados por '::':
     1. Ruta local / de red de la empresa (ej. "Z:\\SIIWI01\\")
-    2. Ruta UNC del servidor de origen (ej. "\\\\127.0.0.1\\inmunotek")
+    2. Ruta UNC del servidor de origen (ej. "\\127.0.0.1\inmunotek")
     3. (opcional) Campo extra (normalmente vacío)
-
-Uso:
-    python parse-filepath.py --file C:/Siigo/filepath.txt
-    python parse-filepath.py --exe C:/Siigo/EXCELSIIGO.exe
-        (busca <dir_del_exe>/filepath.txt)
-    python parse-filepath.py --contains "SIIWI02"
-        (valida si la empresa aparece en el filepath.txt)
-
-Devuelve JSON con:
-    {
-      "exists": true,
-      "path": "C:/Siigo/filepath.txt",
-      "raw": "Z:\\SIIWI01\\::\\\\127.0.0.1\\inmunotek::",
-      "empresa_local": "Z:\\SIIWI01\\",
-      "empresa_unc":   "\\\\127.0.0.1\\inmunotek",
-      "empresa_id":    "01",
-      "empresas_disponibles": [
-        {"id": "01", "ruta": "Z:\\SIIWI01\\", "unc": "\\\\127.0.0.1\\inmunotek"}
-      ],
-      "match": {"id": "01", "ruta": "Z:\\SIIWI01\\", "unc": "..."}
-        (presente si --contains matchea)
-    }
 """
 
 from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -49,23 +42,14 @@ def parse_filepath(raw: str) -> dict:
     IMPORTANTE: filepath.txt NO es un índice de todas las empresas
     disponibles. Es un puntero a UNA sola empresa — la empresa a la que
     esta instalación específica de EXCELSIIGO.exe está apuntando.
-
-    El resto de empresas (si existen) viven en rutas hermanas
-    SIIWI02, SIIWI03, etc. o en otras unidades/discos. Para descubrirlas
-    hay que escanear el filesystem, no leer filepath.txt.
     """
     partes = raw.split("::")
     ruta_local = partes[0].strip() if len(partes) > 0 else ""
     ruta_unc = partes[1].strip() if len(partes) > 1 else ""
 
-    # Extraer ID de empresa: último componente de la ruta
-    # ej. "Z:\\SIIWI01\\" -> "01"
     m = re.search(r"SIIWI(\d+)", ruta_local, re.IGNORECASE)
     empresa_id = m.group(1) if m else ""
 
-    # filepath.txt solo declara UNA empresa (la de esta instalación).
-    # Devolver como lista de 1 elemento para mantener compatibilidad
-    # con consumidores que esperan una lista.
     empresas = []
     if ruta_local or ruta_unc:
         empresas.append({
@@ -90,25 +74,19 @@ def parse_filepath(raw: str) -> dict:
 
 def find_filepath(exe_path: str) -> Optional[Path]:
     """Localiza filepath.txt junto al ejecutable. Acepta POSIX/Windows/MSYS."""
-    # En Windows, Python a veces no maneja rutas POSIX como /c/Siigo/...
-    # Probamos varias formas:
     candidates = []
     p = Path(exe_path)
     if p.exists():
         candidates.append(p)
     candidates.append(Path(str(exe_path).replace("/", "\\")))
-    # Intentar cygpath si está disponible
-    import shutil
     cyg = shutil.which("cygpath")
     if cyg:
         try:
-            import subprocess
             r = subprocess.run([cyg, "-w", exe_path], capture_output=True, text=True, timeout=5)
             if r.returncode == 0 and r.stdout.strip():
                 candidates.append(Path(r.stdout.strip()))
         except Exception:
             pass
-
     for p in candidates:
         if p.exists():
             ft = p.parent / "filepath.txt"
@@ -118,14 +96,14 @@ def find_filepath(exe_path: str) -> Optional[Path]:
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="Parsea filepath.txt de una instalación SIIGO Pyme")
     ap.add_argument("--file", help="Ruta directa a filepath.txt")
     ap.add_argument("--exe", help="Ruta al EXCELSIIGO.exe (busca filepath.txt en su carpeta)")
     ap.add_argument("--contains", help="Buscar match por substring (ej. SIIWI02 o 02)")
     ap.add_argument("--empresa", help="Ruta de empresa solicitada (para validar)")
     args = ap.parse_args()
 
-    # Localizar archivo
     if args.file:
         path = Path(args.file)
     elif args.exe:
@@ -150,7 +128,7 @@ def main():
         **parsed,
     }
 
-    # Buscar match
+    # Buscar match por substring
     match = None
     if args.contains:
         needle = args.contains.lower()
