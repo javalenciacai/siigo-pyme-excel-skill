@@ -247,6 +247,45 @@ Cualquier función `PUSH*` (importa datos al SIIGO):
 
 Más detalles en `references/encoding.md`.
 
+## 9.1 Limitación: `EXCELSIIGO.exe` es un binario GUI
+
+`EXCELSIIGO.exe` es un ejecutable **GUI de Windows** (PE32 GUI, no consola).
+Eso significa que:
+
+- ✅ Funciona correctamente en **sesiones Windows interactivas** (CMD,
+  PowerShell, doble-clic, RDP).
+- ✅ Funciona en **tareas programadas** que corren bajo la cuenta del
+  usuario con sesión abierta.
+- ❌ **NO funciona en shells headless** (CI/CD sin display, SSH puro,
+  WSL sin X server, sesiones de chat remotas) — el binario muere
+  silenciosamente al intentar inicializar la GUI: `rc=0`, sin log, sin
+  XLSX de salida.
+- ❌ **NO funciona con `nohup` o detached** sin un display server.
+
+Síntomas típicos del problema:
+
+- `excel-siigo.sh` devuelve `ok: true, exit_code: 0` pero no se genera
+  ni el .log ni el .xlsx de salida.
+- El archivo .log queda en 0 bytes.
+- El .xlsx nunca aparece en la ruta solicitada.
+
+**Diagnóstico**:
+
+```bash
+file "C:/Siigo/EXCELSIIGO.exe"
+# Debe decir: PE32 executable for MS Windows ... (GUI), Intel i386
+# Si dice (console) en vez de (GUI), esta limitación no aplica.
+```
+
+**Workaround** (cuando se necesita automatización real): lanzar el
+comando desde una **tarea programada de Windows** que corra bajo
+`SYSTEM` o el usuario con escritorio, y consumir el .xlsx resultante.
+NO es viable automatizar `EXCELSIIGO.exe` desde shells sin GUI.
+
+Si el agente que invoca el skill está en un shell headless, debe
+advertir al usuario que el comando fallará silenciosamente y sugerirle
+ejecutarlo en su propia sesión Windows.
+
 ## 9. Cuándo NO usar este skill
 
 - **SIIGO Nube** (API REST). Usar el conector HTTP correspondiente.
@@ -255,6 +294,8 @@ Más detalles en `references/encoding.md`.
 - **Lectura directa de la base de datos SIIGO** (Access/SQL Anywhere). El
   CLI es la vía soportada.
 - **macOS/Linux sin Wine**. No soportado oficialmente.
+- **Shells headless o automatizaciones sin sesión interactiva** (CI, WSL
+  sin X server, sesiones SSH puras, este chat). Ver §9.1 abajo.
 
 ## 10. Mantenimiento
 
