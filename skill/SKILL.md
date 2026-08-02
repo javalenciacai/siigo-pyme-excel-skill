@@ -98,7 +98,7 @@ Variables de entorno reconocidas por los wrappers:
 | `SIIGO_USUARIO`   | —                        | Usuario SIIGO (8 chars). **Obligatorio**.            |
 | `SIIGO_CLAVE`     | —                        | Clave del usuario. **Obligatorio. Nunca en logs.**   |
 | `SIIGO_NORMA`     | `L`                      | `L` (Local) o `N` (NIIF).                            |
-| `SIIGO_LOGS`      | `C:\SIIWI01\LOGS\`      | Carpeta para archivos .LOG.                          |
+| `SIIGO_LOGS`      | *(sin default)*          | Carpeta para archivos .LOG. Si está vacía, los logs van al mismo directorio que `--salida` (o `--logs`/`--entrada` según la función). |
 | `SIIGO_ANO`       | año actual               | Año de proceso (4 dígitos).                          |
 | `SIIGO_LANG`      | `es`                     | Idioma mensajes (`es`/`en`).                         |
 

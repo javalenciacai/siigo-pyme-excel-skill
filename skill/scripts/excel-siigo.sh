@@ -33,7 +33,10 @@ SIIGO_EMPRESA="${SIIGO_EMPRESA:-}"
 SIIGO_USUARIO="${SIIGO_USUARIO:-}"
 SIIGO_CLAVE="${SIIGO_CLAVE:-}"
 SIIGO_NORMA="${SIIGO_NORMA:-L}"
-SIIGO_LOGS="${SIIGO_LOGS:-C:\\SIIWI01\\LOGS\\}"
+# SIIGO_LOGS NO tiene default. Si no se exporta, el wrapper usa el mismo
+# directorio que el archivo de salida (--salida), con un nombre tipo
+# ExcelSiigo_<FUNCION>_<TIMESTAMP>.log. Si pasas --logs, sobrescribe.
+SIIGO_LOGS="${SIIGO_LOGS:-}"
 SIIGO_ANO="${SIIGO_ANO:-$(date +%Y)}"
 SIIGO_LANG="${SIIGO_LANG:-es}"
 SIIGO_AUTO_CONFIRM="${SIIGO_AUTO_CONFIRM:-0}"
@@ -315,16 +318,52 @@ run_excel_siigo() {
   verify_exe || return 1
   check_required || return 1
 
+  # Determinar carpeta de logs. Prioridad:
+  #   1) --logs pasado en extra_args (último --logs <ruta>)
+  #   2) $SIIGO_LOGS exportado
+  #   3) directorio del archivo de salida (--salida)
+  #   4) ./ (cwd del wrapper)
+  local logs_dir=""
+  # Buscar --logs en extra_args (asumimos formato --logs <ruta>)
+  local i=0
+  while [[ $i -lt ${#extra_args[@]} ]]; do
+    if [[ "${extra_args[$i]}" == "--logs" && $((i+1)) -lt ${#extra_args[@]} ]]; then
+      logs_dir="${extra_args[$((i+1))]}"
+      break
+    fi
+    i=$((i+1))
+  done
+  if [[ -z "$logs_dir" && -n "$SIIGO_LOGS" ]]; then
+    logs_dir="$SIIGO_LOGS"
+  fi
+  if [[ -z "$logs_dir" ]]; then
+    # Fallback: directorio del archivo de salida (asumimos --salida es
+    # el primer argumento que parezca una ruta .xlsx).
+    for arg in "${extra_args[@]}"; do
+      if [[ "$arg" =~ \.(xlsx|xls)$ ]] || [[ "$arg" =~ ^[A-Za-z]:.*$ && "$arg" == *\\* ]]; then
+        local arg_dir
+        arg_dir="$(dirname "$arg" 2>/dev/null || echo "")"
+        if [[ -n "$arg_dir" ]]; then
+          logs_dir="$arg_dir"
+          break
+        fi
+      fi
+    done
+  fi
+  if [[ -z "$logs_dir" ]]; then
+    logs_dir="."
+  fi
+
   # Crear carpeta LOGS si no existe
   local logs_posix
-  logs_posix="$(to_posix "$SIIGO_LOGS")"
+  logs_posix="$(to_posix "$logs_dir")"
   mkdir -p "$logs_posix" 2>/dev/null || true
 
   # Generar nombre de log único
   local timestamp
   timestamp="$(date +%Y%m%d_%H%M%S)"
   local log_name="ExcelSiigo_${funcion}_${timestamp}.log"
-  local log_path="${SIIGO_LOGS}${log_name}"
+  local log_path="${logs_dir}/${log_name}"
   local log_posix
   log_posix="$(to_posix "$log_path")"
 
