@@ -1,6 +1,6 @@
 ---
 name: siigo-pyme-excel
-description: Use this skill whenever the user needs to extract data from SIIGO Pyme (Colombia) to Excel, or import Excel data into SIIGO Pyme, using the proprietary EXCELSIIGO.exe CLI. Triggers on requests like "sacar un listado de SIIGO", "cargar terceros a SIIGO", "generar movimientos contables desde un Excel", "descargar saldos de bodega", "importar productos a SIIGO Pyme", "ejecutar EXCELSIIGO.exe", "sincronizar SIIGO con otro sistema", or any mention of the SIIGO Pyme on-premise Windows ERP and its Excel interface. Wraps the 46 GET*/PUSH* functions of EXCELSIIGO.exe with Bash/PowerShell/Python wrappers, JSON output, prereq validation, log parsing, and xlsx template generation. Do NOT use for SIIGO Nube (API REST) or SIIGO Empresarial — only for SIIGO Pyme on Windows.
+description: Use this skill whenever the user needs to extract data from SIIGO Pyme (Colombia) to Excel, or import Excel data into SIIGO Pyme, using the proprietary EXCELSIIGO.exe CLI. Also use when the user wants to filter, aggregate, merge, validate, or convert a previously generated SIIGO .xlsx (e.g. Terceros, GETMOV, GETBOD) without re-running the CLI. Triggers on requests like "sacar un listado de SIIGO", "cargar terceros a SIIGO", "generar movimientos contables desde un Excel", "descargar saldos de bodega", "importar productos a SIIGO Pyme", "ejecutar EXCELSIIGO.exe", "sincronizar SIIGO con otro sistema", "filtrar el último reporte de movimientos", "cruzar Terceros con el GETMOV", or any mention of the SIIGO Pyme on-premise Windows ERP and its Excel interface. Wraps the 46 GET*/PUSH* functions of EXCELSIIGO.exe with Bash/PowerShell/Python wrappers, JSON output, prereq validation, log parsing, xlsx template generation, plus downstream processing (openpyxl/pandas) for already-generated .xlsx files. Do NOT use for SIIGO Nube (API REST) or SIIGO Empresarial — only for SIIGO Pyme on Windows.
 ---
 
 # siigo-pyme-excel
@@ -333,3 +333,132 @@ siigo-pyme-excel/
 - `references/siigo-pyme-concepts.md` — glosario de términos SIIGO.
 - `references/filepath-txt.md` — cómo el CLI localiza la empresa (filepath.txt).
 - `docs/SDD-EXPLORE.md` y `docs/SDD-PROPOSE.md` — diseño del skill.
+
+## 13. Persistencia y reutilización de outputs
+
+**Importante**: una vez generado un .xlsx por el CLI, el archivo es
+completamente independiente de SIIGO. NO hace falta volver a ejecutar
+el .exe para trabajar con los datos — se puede usar Excel, Python,
+pandas, Power Query, etc. directamente sobre el archivo.
+
+**Esta sección documenta cómo el agente (skill) y el usuario pueden
+cooperar para que los .xlsx generados sean reutilizables entre
+sesiones**, sin tener que regenerarlos cada vez.
+
+### 13.1 Carpeta persistente recomendada
+
+El wrapper por defecto escribe el .xlsx en la ruta que el usuario pasa
+con `--salida`. Si esa ruta es temporal (`C:\\temp\\...` o similar), el
+archivo se puede perder al reiniciar el sistema o limpiar Temp.
+
+**Recomendación**: usar una carpeta dedicada para outputs SIIGO, por
+ejemplo:
+
+```
+C:\SIIGO_Reportes\             # raíz
+├── empresa_01\
+│   ├── 2026\
+│   │   ├── 01_enero\
+│   │   ├── 02_febrero\       # ej. Movimiento_2026_ene_feb.xlsx
+│   │   ├── ...
+│   │   └── 12_diciembre\
+│   ├── Terceros\             # ej. Terceros_empresa1.xlsx
+│   ├── Saldos\
+│   └── Inventarios\
+└── empresa_02\
+    └── ...
+```
+
+Convención recomendada: `<empresa>/<año>/<mes_o_categoría>/`. Esto:
+
+- Permite versionar (un .xlsx por mes no se sobreescribe).
+- Facilita referencias cruzadas entre reportes (un GETMOV de enero
+  tiene relación con un GETTER de enero).
+- Hace fácil automatizar mesclas (`merge` entre meses para acumulado
+  anual, `vlookup` contra Terceros para enriquecer con NIT/dirección).
+
+### 13.2 Comportamiento del agente con archivos generados
+
+Después de generar un .xlsx, el agente debe:
+
+1. **Registrar el archivo en su memoria de trabajo** de la sesión actual.
+   Si el agente tiene `memory` o `session_search`, guardar:
+   - Ruta absoluta del .xlsx
+   - Función SIIGO usada (GETMOV, GETTER, etc.)
+   - Rango de fechas / filtros aplicados
+   - Timestamp de generación
+   - Tamaño y número de filas/columnas
+
+2. **NO regenerarlo en futuras sesiones** a menos que el usuario lo pida.
+   Si el usuario pide "el listado de terceros que generaste ayer",
+   el agente debe:
+   - Buscar primero si el archivo ya existe en la carpeta persistente.
+   - Si existe y la fecha es razonable, leerlo directamente con
+     `openpyxl` y responder con datos del archivo.
+   - Solo regenerar si el archivo no existe, está obsoleto, o el
+     usuario lo pide explícitamente.
+
+3. **Sugerir la carpeta persistente** la primera vez que el usuario
+   genera un archivo, si no la ha configurado. Ejemplo de respuesta:
+
+   ```
+   Generé C:\temp\Terceros_2026.xlsx con 982 terceros.
+   
+   ⚠️ Esta carpeta es temporal. ¿Quieres que la mueva a una carpeta
+   persistente como C:\SIIGO_Reportes\empresa_01\Terceros\?
+   Si me dices "sí", puedo:
+   - Mover el archivo a la nueva ubicación
+   - Recordar esa ruta para futuras sesiones
+   - Hacer backups automáticos antes de regenerar
+   ```
+
+### 13.3 Procesamiento posterior (el caso de uso común)
+
+Una vez generado un .xlsx, el caso de uso más frecuente es
+**procesarlo sin tocar SIIGO**. Esto puede ser:
+
+- **Filtrar**: por cuenta, tercero, fecha, tipo doc, valor, etc.
+- **Agregar**: totales por mes, por cuenta, por tercero.
+- **Mesclar**: con otros .xlsx generados (ej. Terceros + GETMOV para
+  enriquecer con NIT/dirección/ciudad).
+- **Validar**: contra PUC, contra saldos esperados, contra presupuesto.
+- **Convertir**: a CSV/JSON/SQL para importar a otro sistema.
+
+**El agente DEBE ofrecerse主动 a hacer esto** cuando el usuario
+genera un .xlsx. Frases disparadoras en la respuesta:
+
+- "¿Quieres que filtre/limpie/agregue/mescle esto con...?"
+- "¿A qué carpeta quieres moverlo para no perderlo?"
+- "¿Quieres que te genere un reporte derivado (ej. balance por
+  tercero, total por cuenta, top 10 proveedores)?"
+
+### 13.4 Convención de nombres sugerida
+
+Para que el agente y el usuario se entiendan al referirse a archivos:
+
+```
+<funcion>_<empresa>_<periodo>_<fecha_generacion>.xlsx
+```
+
+Ejemplos:
+- `GETMOV_empresa01_2026-01-01_2026-02-29_20260803.xlsx`
+- `GETTER_empresa01_full_20260803.xlsx`
+- `GETSAL_empresa01_2026-Q1_20260803.xlsx`
+- `GETBOD_empresa01_2026-12_20260803.xlsx`
+
+El wrapper NO fuerza esta convención (el usuario elige `--salida`), pero
+es útil para reportes automáticos y para que el agente pueda inferir
+qué archivos son "viejos" o "ya generados".
+
+### 13.5 Tabla de outputs por sesión (memoria del agente)
+
+Si el agente tiene acceso a memoria persistente o a una nota de sesión,
+recomendarle guardar una tabla como:
+
+| Archivo | Función | Período | Filas | Generado | Carpeta |
+|---------|---------|---------|-------|----------|---------|
+| `GETTER_empresa01_full.xlsx` | GETTER | todos | 982 | 2026-08-03 | `C:\SIIGO_Reportes\empresa_01\Terceros\` |
+| `GETMOV_empresa01_2026-ene-feb.xlsx` | GETMOV | 2026-01-01 a 2026-02-29 | 5898 | 2026-08-03 | `C:\SIIGO_Reportes\empresa_01\2026\02_febrero\` |
+
+Esto evita regenerar archivos y permite al agente cruzar información
+entre reportes.
