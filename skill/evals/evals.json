@@ -1,22 +1,25 @@
 {
   "skill_name": "siigo-pyme-excel",
+  "description": "Tests de triggering y comportamiento del skill siigo-pyme-excel. should_trigger=true: el agente DEBE usar este skill. should_trigger=false: el agente NO debe usarlo (es para otro producto o no aplica).",
   "evals": [
     {
       "id": 1,
       "name": "extraer-movimiento-contable",
+      "should_trigger": true,
       "prompt": "Necesito sacar todos los movimientos contables de mayo 2024 de mi empresa en SIIGO Pyme, los tipo Factura, para revisarlos en Excel.",
-      "expected_output": "El agente invoca el wrapper `bash scripts/excel-siigo.sh getmov` con FIni=0501, FFin=0531, Tipo=F, y devuelve la ruta del XLSX generado más el JSON con ok=true.",
+      "expected_output": "El agente invoca el wrapper `bash scripts/excel-siigo.sh getmov` con fini=0501, ffin=0531, tipo=F, y devuelve la ruta del XLSX generado más el JSON con ok=true.",
       "files": [],
       "expectations": [
         "Uses the GETMOV function (not raw EXCELSIIGO.exe call)",
         "Passes fini/ffin as MMDD (0501, 0531) not YYYYMMDD",
-        "Passes Tipo=F for facturas",
+        "Passes tipo=F for facturas",
         "Output is JSON with ok, exit_code, log_path, duration_ms"
       ]
     },
     {
       "id": 2,
       "name": "importar-terceros",
+      "should_trigger": true,
       "prompt": "Tengo un Excel con 200 terceros nuevos que necesito cargar a SIIGO Pyme. ¿Cómo le hago?",
       "expected_output": "El agente guía al usuario a (1) generar la plantilla vacía con `build-xlsx-template.py GETTER --offline`, (2) llenarla, (3) ejecutar `excel-siigo.sh pushter --entrada X.xlsx --errores Y.xlsx --yes`. Advierte que es operación destructiva.",
       "files": [],
@@ -27,8 +30,89 @@
       ]
     },
     {
+      "id": 3,
+      "name": "saldos-bodega",
+      "should_trigger": true,
+      "prompt": "Descarga los saldos de bodega del cierre de 2024 de mi SIIGO.",
+      "expected_output": "El agente usa `bash scripts/excel-siigo.sh getbod --prod 1 9999999999999 --bodega 0001 9999 --mes 12 --salida ...` para extraer todos los productos en todas las bodegas al cierre de diciembre.",
+      "files": [],
+      "expectations": [
+        "Uses the GETBOD function",
+        "Filters by mes=12 (diciembre/cierre)",
+        "Uses a wide range for productos (1 a 9999999999999)",
+        "Output goes to a .xlsx file the user can open in Excel"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "verificar-entorno",
+      "should_trigger": true,
+      "prompt": "Antes de empezar, ¿puedes verificar que tengo todo lo necesario para usar el CLI de SIIGO?",
+      "expected_output": "El agente ejecuta `bash scripts/check-prereqs.sh` que detecta SIIGO_EXE, filepath.txt, empresas, .gnt, etc. Devuelve un reporte de qué está OK y qué falta.",
+      "files": [],
+      "expectations": [
+        "Runs check-prereqs.sh",
+        "Reports whether EXCELSIIGO.exe is accessible",
+        "Reports whether filepath.txt is found",
+        "Reports whether the user has at least one SIIGO empresa"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "listar-funciones",
+      "should_trigger": true,
+      "prompt": "¿Qué funciones tiene el CLI de SIIGO?",
+      "expected_output": "El agente ejecuta `bash scripts/excel-siigo.sh list` y muestra las 46 funciones organizadas por GET/PUSH, junto con la empresa detectada del filepath.txt.",
+      "files": [],
+      "expectations": [
+        "Lists the 46 functions (or summarizes them)",
+        "Groups by GET vs PUSH",
+        "Mentions the empresa detected from filepath.txt"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "no-trigger-siigo-nube",
+      "should_trigger": false,
+      "prompt": "Conectarme a la API REST de SIIGO Nube para importar facturas.",
+      "expected_output": "El agente debe indicar que este skill es para SIIGO Pyme (Windows on-premise), NO para SIIGO Nube. Para SIIGO Nube existe otro skill/conector (HTTP API).",
+      "files": [],
+      "expectations": [
+        "Recognizes SIIGO Nube is a different product",
+        "Says this skill does not apply",
+        "Suggests the correct path (SIIGO Nube API / another skill)"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "no-trigger-otro-erp",
+      "should_trigger": false,
+      "prompt": "Importar productos a SAP Business One desde un Excel.",
+      "expected_output": "El agente debe indicar que este skill es exclusivamente para SIIGO Pyme, no para SAP. Sugerir usar el conector de SAP B1.",
+      "files": [],
+      "expectations": [
+        "Recognizes SAP is a different ERP",
+        "Says this skill does not apply",
+        "Suggests the correct path (SAP B1 connector)"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "cargar-cuentas-contables",
+      "should_trigger": true,
+      "prompt": "Necesito cargar el PUC colombiano actualizado a SIIGO.",
+      "expected_output": "El agente sugiere `bash scripts/excel-siigo.sh pushcta --entrada puc.xlsx --errores ...` o el flujo equivalente con plantilla.",
+      "files": [],
+      "expectations": [
+        "Uses PUSHCTA function",
+        "Warns that PUSH operations modify SIIGO",
+        "Mentions the need to have a properly formatted template first"
+      ]
+    },
+    {
       "id": 9,
       "name": "validar-empresa-contra-filepath",
+      "should_trigger": true,
       "prompt": "Mi empresa en SIIGO está en Z:\\SIIWI03\\. ¿Puedes sacarme un listado de productos?",
       "expected_output": "El agente configura SIIGO_EMPRESA='Z:\\SIIWI03\\' y al ejecutar el wrapper, el validador detecta que la empresa no está en el filepath.txt de la instalación, BLOQUEA la ejecución y muestra un mensaje claro listando las empresas disponibles. NO ejecuta el .exe a ciegas.",
       "files": [],
@@ -41,86 +125,14 @@
     {
       "id": 10,
       "name": "generar-xlsx-con-datos-por-defecto",
-      "prompt": "Bájame todos los terceros de mi SIIGO a un Excel que pueda abrir.",
-      "expected_output": "El agente usa `excel-siigo.sh getter` con ConDatos=S (default) y entrega un .xlsx con los terceros reales, no una plantilla vacía. Si el usuario pidiera explícitamente la plantilla, entonces sí usa `--offline`.",
+      "should_trigger": true,
+      "prompt": "Genera un listado de terceros de mi empresa, los quiero con datos.",
+      "expected_output": "El agente invoca `bash scripts/excel-siigo.sh getter --salida ...` SIN --offline. Por defecto ConDatos=S (datos reales), no la plantilla vacía.",
       "files": [],
       "expectations": [
-        "ConDatos=S is the default (datos reales)",
-        "The XLSX is generated with real third-party data, not just headers",
-        "If the user explicitly asked for a template, then --offline is appropriate"
-      ]
-    },
-    {
-      "id": 3,
-      "name": "saldos-bodega",
-      "prompt": "Quiero los saldos de inventario por bodega del cierre de diciembre 2023 para cruzar con mi sistema de BI.",
-      "expected_output": "El agente invoca `excel-siigo.sh getbod` con prod=0010001000001 9999999999999, bodega=0001 9999, mes=12, salida=<ruta>.xlsx.",
-      "files": [],
-      "expectations": [
-        "Uses the GETBOD function",
-        "Passes product range as 13 digits",
-        "Passes bodega range as 4 digits",
-        "Passes mes=12 for December close"
-      ]
-    },
-    {
-      "id": 4,
-      "name": "verificar-entorno",
-      "prompt": "Antes de seguir, ¿el servidor Windows donde voy a correr tiene todo lo necesario para usar el CLI de SIIGO?",
-      "expected_output": "El agente sugiere `bash scripts/check-prereqs.sh` y muestra el output esperado: valida SIIGO_EXE, empresa, logs, sin instancias corriendo, python3 disponible.",
-      "files": [],
-      "expectations": [
-        "Recommends check-prereqs.sh as the first step",
-        "Lists what is being checked (binary, empresa, logs, instancias, python3)"
-      ]
-    },
-    {
-      "id": 5,
-      "name": "listar-funciones",
-      "prompt": "¿Qué funciones tiene el CLI de SIIGO Pyme? Necesito saber qué puedo extraer y qué puedo importar.",
-      "expected_output": "El agente ejecuta `bash scripts/excel-siigo.sh list` y muestra las 46 funciones organizadas por módulo (Movimiento, Terceros, Inventarios, Contabilidad, etc.), distinguiendo GET* de PUSH*.",
-      "files": [],
-      "expectations": [
-        "Mentions 46 functions total",
-        "Distinguishes GET* (extract) from PUSH* (import)",
-        "References functions-catalog.md for the full list"
-      ]
-    },
-    {
-      "id": 6,
-      "name": "no-trigger-siigo-nube",
-      "prompt": "Necesito conectarme a la API REST de SIIGO Nube para descargar facturas electrónicas.",
-      "expected_output": "El agente NO debe usar este skill. Debe explicar que es solo para SIIGO Pyme on-premise con EXCELSIIGO.exe, y que para SIIGO Nube (API REST) se necesita otro skill/integración.",
-      "files": [],
-      "expectations": [
-        "Recognizes SIIGO Nube as a different product",
-        "Says this skill does NOT apply",
-        "Suggests using the SIIGO Nube REST API instead"
-      ]
-    },
-    {
-      "id": 7,
-      "name": "no-trigger-otro-erp",
-      "prompt": "¿Cómo importo un catálogo de productos a SAP Business One desde un Excel?",
-      "expected_output": "El agente NO debe usar este skill (es específico de SIIGO Pyme). Debe decir que este skill no aplica y dar info genérica de SAP B1 o preguntar qué ERP usa.",
-      "files": [],
-      "expectations": [
-        "Recognizes SAP Business One as a different ERP",
-        "Says this skill does NOT apply",
-        "Does not invoke the SIIGO wrapper"
-      ]
-    },
-    {
-      "id": 8,
-      "name": "cargar-cuentas-contables",
-      "prompt": "Mi contador me dio un .xlsx con el PUC actualizado. ¿Cómo lo subo a SIIGO?",
-      "expected_output": "El agente identifica que es PUSHCTA (cuentas contables), explica el formato de 10 dígitos, sugiere generar la plantilla con `build-xlsx-template.py GETCTA --offline` primero para ver las columnas exactas, y luego ejecutar `excel-siigo.sh pushcta --entrada X.xlsx --errores Y.xlsx --yes` con confirmación.",
-      "files": [],
-      "expectations": [
-        "Identifies PUSHCTA (not PUSHTER or PUSHINV) as the correct function",
-        "Notes 10-digit account code format",
-        "Recommends generating the template first to confirm columns",
-        "Warns that PUSH operations are destructive"
+        "Uses GETTER function",
+        "Does NOT use --offline (default is data, not empty template)",
+        "Confirms the output xlsx contains real data, not headers only"
       ]
     }
   ]

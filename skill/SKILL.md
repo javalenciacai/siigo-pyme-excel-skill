@@ -36,7 +36,70 @@ Antes de invocar el skill verifica que existan:
    configurar `SIIGO_LOGS` o pasar `--logs` al wrapper.
 7. **Espacio en disco** suficiente para los .xlsx generados.
 
-Ejecuta primero el validador:
+### Dependencias Python (para el wrapper Python y procesamiento posterior)
+
+Los scripts Python (`excel-siigo.py`, `parse-filepath.py`, `parse-log.py`,
+`build-xlsx-template.py`) requieren:
+
+- **Python 3.8+** (probado con 3.11 y 3.14)
+- **openpyxl** ≥ 3.0 — para leer/escribir los .xlsx generados
+
+```bash
+pip install openpyxl
+# o, en sistemas con PEP 668 (Ubuntu, etc.):
+pip install --break-system-packages openpyxl
+```
+
+**Si el usuario quiere procesar los .xlsx** (filtrar, agregar, mesclar,
+convertir) más allá de lo que el CLI genera, también puede ser útil:
+
+```bash
+pip install pandas openpyxl  # procesamiento tabular avanzado
+```
+
+### Dependencias de runtime (wrappers)
+
+- **Bash wrapper** (`scripts/excel-siigo.sh`): requiere bash 4+ y
+  `cmd.exe` en PATH (Windows nativo, Git Bash, WSL). NO funciona en
+  macOS sin cmd.exe.
+- **Python wrapper** (`scripts/excel-siigo.py`): multiplataforma puro.
+  Funciona en Windows, macOS, Linux (con Wine si se invoca el .exe).
+- **PowerShell wrapper** (`scripts/excel-siigo.ps1`): requiere PowerShell
+  5+ (incluido en Windows 10/11). Por defecto, Windows bloquea scripts
+  `.ps1` sin firmar; ejecuta primero:
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+  ```
+
+### Permisos de ejecución
+
+En Linux/macOS/WSL los scripts necesitan bit de ejecución. Si acabas de
+clonar el repo y los scripts no corren, haz:
+
+```bash
+chmod +x scripts/*.sh scripts/*.py
+```
+
+En Windows el bit de ejecución no aplica, pero Git Bash puede requerir
+que los scripts estén en PATH para invocarlos sin `./scripts/`.
+
+### Lo que el skill NO incluye (y debe estar ya en el sistema)
+
+- **`EXCELSIIGO.exe`** — binario propietario de SIIGO Pyme. NO se
+  distribuye con el skill. Cada usuario lo tiene instalado en su
+  propio Windows (típicamente `C:\Siigo\EXCELSIIGO.exe`).
+- **`filepath.txt`** — archivo de configuración de SIIGO que apunta a la
+  empresa. Se crea al instalar SIIGO Pyme. NO se distribuye.
+- **Una instancia de SIIGO Pyme con la empresa creada y licencia activa**.
+  El CLI no funciona sin esto.
+- **Credenciales de usuario SIIGO** (8 caracteres). El usuario las
+  tiene; el skill NO las almacena por seguridad (§7).
+
+Si el agente que invoca el skill NO tiene `EXCELSIIGO.exe` instalado
+ni la licencia, debe advertir al usuario que el skill no puede generar
+los .xlsx (sólo procesar los que ya generó antes en otra sesión).
+
+Ejecuta primero el validador para detectar estos prerequisitos:
 
 ```bash
 bash scripts/check-prereqs.sh
