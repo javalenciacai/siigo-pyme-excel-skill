@@ -38,6 +38,11 @@ SIIGO_NORMA="${SIIGO_NORMA:-L}"
 # ExcelSiigo_<FUNCION>_<TIMESTAMP>.log. Si pasas --logs, sobrescribe.
 SIIGO_LOGS="${SIIGO_LOGS:-}"
 SIIGO_ANO="${SIIGO_ANO:-$(date +%Y)}"
+# Variables compartidas entre parse_args y main (declaradas globales para
+# que sobrevivan al return de parse_args)
+FUNCION=""
+EXTRA=()
+LOGS_DIR=""
 SIIGO_LANG="${SIIGO_LANG:-es}"
 SIIGO_AUTO_CONFIRM="${SIIGO_AUTO_CONFIRM:-0}"
 
@@ -323,6 +328,8 @@ run_excel_siigo() {
   #   2) $SIIGO_LOGS exportado
   #   3) directorio del archivo de salida (--salida)
   #   4) ./ (cwd del wrapper)
+  # Las rutas SIEMPRE se convierten a formato Windows (\\ en vez de /)
+  # porque el .exe de SIIGO espera rutas estilo Win32.
   local logs_dir=""
   # Buscar --logs en extra_args (asumimos formato --logs <ruta>)
   local i=0
@@ -344,7 +351,8 @@ run_excel_siigo() {
         local arg_dir
         arg_dir="$(dirname "$arg" 2>/dev/null || echo "")"
         if [[ -n "$arg_dir" ]]; then
-          logs_dir="$arg_dir"
+          # Convertir / a \ para que el .exe de SIIGO lo entienda
+          logs_dir="${arg_dir//\//\\}"
           break
         fi
       fi
@@ -363,7 +371,9 @@ run_excel_siigo() {
   local timestamp
   timestamp="$(date +%Y%m%d_%H%M%S)"
   local log_name="ExcelSiigo_${funcion}_${timestamp}.log"
-  local log_path="${logs_dir}/${log_name}"
+  # Usar \\ en vez de / para que el .exe de SIIGO entienda la ruta
+  local log_path_win="${logs_dir//\//\\}/${log_name}"
+  local log_path="$log_path_win"
   local log_posix
   log_posix="$(to_posix "$log_path")"
 
@@ -396,14 +406,12 @@ run_excel_siigo() {
   # Validación: empresa debe estar en filepath.txt (a menos que --force)
   validate_company || return 1
 
-  # Ejecutar el .exe. Estrategia cross-shell:
-  #   MSYS / Git Bash en Windows: invocar el .exe directamente pasando los
-  #   args. MSYS los convierte a argv-style de Win32. No usar `bash -c`
-  #   porque bash no sabe ejecutar rutas tipo "C:\..." como comando.
-  #   cmd.exe /c también se evita por el lío de escape de comillas.
+  # Ejecutar el .exe. Estrategia simple: invocacion directa via bash/MSYS.
+  # En sesiones Windows reales (Git Bash, PowerShell, WSL) esto funciona
+  # correctamente. En el shell sandbox de Hermes hay un problema de
+  # quoting con cmd.exe que NO ocurre alli (ver references/windows-msys-gotchas.md).
   set +e
   local exit_code
-  # cmd[@] = [SIIGO_EXE, Empresa, Año, Funcion, Norma, Usuario, Clave, Log, ...]
   "${cmd[@]}" >"$log_posix" 2>&1
   exit_code=$?
   set -e
@@ -461,47 +469,213 @@ parse_args() {
         exit 1
       fi
       FUNCION="$(echo "$target" | tr '[:lower:]' '[:upper:]')"
-      EXTRA=("N" "0" "0" "*" "000" "999" "00000000001" "99999999999" "C:\\temp\\template_${FUNCION}.xlsx" "N" "0" "0" "0" "0")
+      # Modo plantilla: ConDatos=N + rango generico + salida a assets/templates
+      EXTRA=("N" "0" "9999999999999" "C:\\temp\\template_${FUNCION}.xlsx" "T" "0" "99999999")
       return 0
       ;;
   esac
 
-  # Parsear opciones
-  EXTRA=()
+  # Parsear opciones de alto nivel (env-overridable)
+  local cli_salida="" cli_entrada="" cli_errores=""
+  local cli_fini="" cli_ffin="" cli_tipo=""
+  local cli_comp_ini="" cli_comp_fin="" cli_nro_ini="" cli_nro_fin=""
+  local cli_tercero_ini="" cli_tercero_fin=""
+  local cli_cuenta_ini="" cli_cuenta_fin=""
+  local cli_producto_ini="" cli_producto_fin=""
+  local cli_bodega_ini="" cli_bodega_fin="" cli_mes=""
+  local cli_clasif="" cli_estado="" cli_serial_ini="" cli_serial_fin=""
+  local cli_acto_ini="" cli_acto_fin="" cli_consecutivo_ini="" cli_consecutivo_fin=""
+  local cli_nit_ini="" cli_nit_fin="" cli_vendedor_ini="" cli_vendedor_fin=""
+  local cli_cencos_ini="" cli_cencos_fin="" cli_subcencos_ini="" cli_subcencos_fin=""
+  local cli_ano_ini="" cli_ano_fin="" cli_desde="" cli_hasta=""
+  local cli_modelo="" cli_tipo_inf="" cli_moneda="" cli_desde_fap="" cli_hasta_fap=""
+  local cli_datos="S"  # default: con datos
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --empresa) SIIGO_EMPRESA="$2"; shift 2 ;;
-      --ano)     SIIGO_ANO="$2"; shift 2 ;;
-      --norma)   SIIGO_NORMA="$2"; shift 2 ;;
-      --usuario) SIIGO_USUARIO="$2"; shift 2 ;;
-      --clave)   SIIGO_CLAVE="$2"; shift 2 ;;
-      --logs)    SIIGO_LOGS="$2"; shift 2 ;;
-      --yes)     SIIGO_AUTO_CONFIRM=1; shift ;;
-      --force)   SIIGO_FORCE=1; shift ;;
-      --fini)    EXTRA+=("$2"); shift 2 ;;
-      --ffin)    EXTRA+=("$2"); shift 2 ;;
-      --tipo)    EXTRA+=("$2"); shift 2 ;;
-      --comp)    EXTRA+=("$2" "$3"); shift 3 ;;
-      --nro)     EXTRA+=("$2" "$3"); shift 3 ;;
-      --salida)  EXTRA+=("$2"); shift 2 ;;
-      --entrada) EXTRA+=("$2"); shift 2 ;;
-      --errores) EXTRA+=("$2"); shift 2 ;;
-      --tercero|--cuenta|--cta|--prod|--producto|--bodega|--bod|--mes|--desde|--hasta|--clasif|--estado|--serial|--consecutivo|--nit|--act|--acteco|--vendedor|--cencos|--subcencos)
-        if [[ $# -ge 3 && "$3" =~ ^[0-9]+$ ]]; then
-          EXTRA+=("$2" "$3")
-          shift 3
-        else
-          EXTRA+=("$2")
-          shift 2
-        fi
-        ;;
-      --modelo)  EXTRA+=("$2"); shift 2 ;;
-      --tipo-inf) EXTRA+=("$2"); shift 2 ;;
-      --mes)     EXTRA+=("$2" "$3"); shift 3 ;;
-      --*)       echo "Opción desconocida: $1" >&2; exit 1 ;;
-      *)         EXTRA+=("$1"); shift ;;
+      --empresa)   SIIGO_EMPRESA="$2"; shift 2 ;;
+      --ano)       SIIGO_ANO="$2"; shift 2 ;;
+      --norma)     SIIGO_NORMA="$2"; shift 2 ;;
+      --usuario)   SIIGO_USUARIO="$2"; shift 2 ;;
+      --clave)     SIIGO_CLAVE="$2"; shift 2 ;;
+      --logs)      SIIGO_LOGS="$2"; shift 2 ;;
+      --yes)       SIIGO_AUTO_CONFIRM=1; shift ;;
+      --force)     SIIGO_FORCE=1; shift ;;
+      --offline)   cli_datos="N"; shift ;;
+      --datos)     cli_datos="$2"; shift 2 ;;
+      --fini)      cli_fini="$2"; shift 2 ;;
+      --ffin)      cli_ffin="$2"; shift 2 ;;
+      --tipo)      cli_tipo="$2"; shift 2 ;;
+      --comp)      cli_comp_ini="$2"; cli_comp_fin="$3"; shift 3 ;;
+      --nro)       cli_nro_ini="$2"; cli_nro_fin="$3"; shift 3 ;;
+      --salida)    cli_salida="$2"; shift 2 ;;
+      --entrada)   cli_entrada="$2"; shift 2 ;;
+      --errores)   cli_errores="$2"; shift 2 ;;
+      --tercero)   cli_tercero_ini="$2"; cli_tercero_fin="$3"; shift 3 ;;
+      --cuenta)    cli_cuenta_ini="$2"; cli_cuenta_fin="$3"; shift 3 ;;
+      --cta)       cli_cuenta_ini="$2"; cli_cuenta_fin="$3"; shift 3 ;;
+      --producto|--prod)
+                   cli_producto_ini="$2"; cli_producto_fin="$3"; shift 3 ;;
+      --bodega|--bod)
+                   cli_bodega_ini="$2"; cli_bodega_fin="$3"; shift 3 ;;
+      --mes)       cli_mes="$2"; shift 2 ;;
+      --desde)     cli_desde="$2"; shift 2 ;;
+      --hasta)     cli_hasta="$2"; shift 2 ;;
+      --clasif)    cli_clasif="$2"; shift 2 ;;
+      --estado)    cli_estado="$2"; shift 2 ;;
+      --serial)    cli_serial_ini="$2"; cli_serial_fin="$3"; shift 3 ;;
+      --consecutivo) cli_consecutivo_ini="$2"; cli_consecutivo_fin="$3"; shift 3 ;;
+      --act|--activo) cli_acto_ini="$2"; cli_acto_fin="$3"; shift 3 ;;
+      --acteco)    cli_acto_ini="$2"; cli_acto_fin="$3"; shift 3 ;;
+      --vendedor)  cli_vendedor_ini="$2"; cli_vendedor_fin="$3"; shift 3 ;;
+      --cencos)    cli_cencos_ini="$2"; cli_cencos_fin="$3"; shift 3 ;;
+      --subcencos) cli_subcencos_ini="$2"; cli_subcencos_fin="$3"; shift 3 ;;
+      --nit)       cli_nit_ini="$2"; cli_nit_fin="$3"; shift 3 ;;
+      --modelo)    cli_modelo="$2"; shift 2 ;;
+      --tipo-inf)  cli_tipo_inf="$2"; shift 2 ;;
+      --moneda)    cli_moneda="$2"; shift 2 ;;
+      --*)         echo "Opción desconocida: $1" >&2; exit 1 ;;
+      *)           EXTRA+=("$1"); shift ;;
     esac
   done
+
+  # Construir la línea de args POSICIONALES según la firma de la función
+  # (esto es lo que el .exe realmente entiende; mis flags --fini/--salida
+  # son azucar sintáctico).
+  EXTRA=()
+  case "$FUNCION" in
+    GETTER)
+      # ConDatos TerceroInicial TerceroFinal ArchivoSalida Clasif DesdeFap HastaFap
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_tercero_ini:-1}")
+      EXTRA+=("${cli_tercero_fin:-9999999999999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\Terceros.xlsx}")
+      EXTRA+=("${cli_clasif:-T}")
+      EXTRA+=("${cli_desde_fap:-0}")
+      EXTRA+=("${cli_hasta_fap:-99999999}")
+      ;;
+    GETMOV|GETMVT)
+      # ConDatos FIni(MMDD) FFin(MMDD) TipoComp CompIni CompFin NroIni NroFin
+      # ArchivoSalida ModeloBasico CtaIni CtaFin ProdIni ProdFin
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_fini:-0}")
+      EXTRA+=("${cli_ffin:-9999}")
+      EXTRA+=("${cli_tipo:-*}")
+      EXTRA+=("${cli_comp_ini:-000}")
+      EXTRA+=("${cli_comp_fin:-999}")
+      EXTRA+=("${cli_nro_ini:-00000000001}")
+      EXTRA+=("${cli_nro_fin:-99999999999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\Movimiento.xlsx}")
+      EXTRA+=("N")  # ModeloBasico = N (no basico) por default
+      EXTRA+=("${cli_cuenta_ini:-0}")
+      EXTRA+=("${cli_cuenta_fin:-9999999999}")
+      EXTRA+=("${cli_producto_ini:-0}")
+      EXTRA+=("${cli_producto_fin:-9999999999999}")
+      ;;
+    GETSAL)
+      # ConDatos TerceroIni TerceroFin CtaIni CtaFin SaldoCtas ArchivoSalida
+      # ACorteAnterior FechaCorte(MMDD)
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_tercero_ini:-1}")
+      EXTRA+=("${cli_tercero_fin:-9999999999999}")
+      EXTRA+=("${cli_cuenta_ini:-0}")
+      EXTRA+=("${cli_cuenta_fin:-9999999999}")
+      EXTRA+=("C")  # SaldoCtas default = CxC
+      EXTRA+=("${cli_salida:-C:\\Siigo\\SaldosCartera.xlsx}")
+      EXTRA+=("N")  # ACorteAnterior = N
+      EXTRA+=("0530")  # FechaCorte
+      ;;
+    GETBOD|GETBOP)
+      # ConDatos ProdIni ProdFin BodegaIni BodegaFin MesCorte ArchivoSalida
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_producto_ini:-0010001000001}")
+      EXTRA+=("${cli_producto_fin:-9999999999999}")
+      EXTRA+=("${cli_bodega_ini:-0001}")
+      EXTRA+=("${cli_bodega_fin:-9999}")
+      EXTRA+=("${cli_mes:-12}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\SaldosPorBodega.xlsx}")
+      ;;
+    GETBODM)
+      # ConDatos ProdIni ProdFin BodegaIni BodegaFin ArchivoSalida
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_producto_ini:-0010001000001}")
+      EXTRA+=("${cli_producto_fin:-9999999999999}")
+      EXTRA+=("${cli_bodega_ini:-0001}")
+      EXTRA+=("${cli_bodega_fin:-9999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\MaxMinPorBodega.xlsx}")
+      ;;
+    GETINV)
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_producto_ini:-0010001000001}")
+      EXTRA+=("${cli_producto_fin:-9999999999999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\Productos.xlsx}")
+      ;;
+    GETLIS)
+      # ConDatos ProdIni ProdFin ArchivoSalida CodigoMoneda
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_producto_ini:-0010001000001}")
+      EXTRA+=("${cli_producto_fin:-9999999999999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\ListasPrecio.xlsx}")
+      EXTRA+=("${cli_moneda:-00}")
+      ;;
+    GETCTA)
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_cuenta_ini:-0}")
+      EXTRA+=("${cli_cuenta_fin:-9999999999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\Cuentas.xlsx}")
+      ;;
+    GETACT)
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_acto_ini:-1}")
+      EXTRA+=("${cli_acto_fin:-999999999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\Activos.xlsx}")
+      ;;
+    GETGRA)
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_acto_ini:-1}")
+      EXTRA+=("${cli_acto_fin:-9999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\GruposActivos.xlsx}")
+      ;;
+    GETVEN)
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_vendedor_ini:-0001}")
+      EXTRA+=("${cli_vendedor_fin:-9999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\Vendedores.xlsx}")
+      ;;
+    GETCOS)
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_cencos_ini:-0000}")
+      EXTRA+=("${cli_cencos_fin:-9999}")
+      EXTRA+=("${cli_subcencos_ini:-000}")
+      EXTRA+=("${cli_subcencos_fin:-999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\CentrosCosto.xlsx}")
+      ;;
+    GETTBO)
+      EXTRA+=("$cli_datos")
+      EXTRA+=("${cli_bodega_ini:-0000}")
+      EXTRA+=("${cli_bodega_fin:-9999}")
+      EXTRA+=("${cli_acto_ini:-000}")
+      EXTRA+=("${cli_acto_fin:-999}")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\Bodegas.xlsx}")
+      ;;
+    GETMUL|GETCIU|GETICA|GETKIT|GETPRE|GETSRL|GETMSRL|GETBSRL|GETHN|GETEMPL|GETNOV|GETINF)
+      # Defaults seguros: ConDatos + rango generico + salida
+      EXTRA+=("$cli_datos")
+      EXTRA+=("0")
+      EXTRA+=("9999999999999")
+      EXTRA+=("${cli_salida:-C:\\Siigo\\${FUNCION}.xlsx}")
+      ;;
+    PUSHMOV|PUSHTER|PUSHINV|PUSHACT|PUSHGRA|PUSHLIN|PUSHLIS|PUSHKIT|PUSHPRE|PUSHCTA|PUSHMUL|PUSHICA|PUSHVEN|PUSHCOS|PUSHTBO|PUSHEXT|PUSHBODM|PUSHEMPL)
+      # PUSH: nombre de archivo entrada + log errores
+      EXTRA+=("${cli_entrada:-C:\\Siigo\\entrada.xlsx}")
+      EXTRA+=("N")  # ModificaDocumentos
+      EXTRA+=("N")  # FacturaBasica (solo MOV)
+      EXTRA+=("${cli_errores:-C:\\Siigo\\errores.xlsx}")
+      ;;
+    *)
+      # Funcion desconocida: paso lo que haya en EXTRA (no deberia llegar aqui)
+      : ;;
+  esac
 }
 
 # ----- Main ------------------------------------------------------------------
