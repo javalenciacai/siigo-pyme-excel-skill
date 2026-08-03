@@ -54,11 +54,11 @@ FUNCIONES = (
 @dataclass
 class Config:
     siigo_exe: str = "C:\\Siigo\\EXCELSIIGO.exe"
-    empresa:   str = "C:\\SIIWI01\\"
+    empresa:   str = ""  # sin default: detect via filepath.txt
     usuario:   str = ""
     clave:     str = ""
     norma:     str = "L"
-    logs:      str = "C:\\SIIWI01\\LOGS\\"
+    logs:      str = ""  # sin default: misma carpeta que --salida
     ano:       str = ""
     auto_confirm: bool = False
 
@@ -168,10 +168,30 @@ def run(funcion: str, *, params: Optional[Sequence[str]] = None,
     if not Path(cfg.siigo_exe).exists() and not os.path.exists(cfg.siigo_exe):
         raise FileNotFoundError(f"ExcelSIIGO.exe no encontrado: {cfg.siigo_exe}")
 
-    _ensure_logs_dir(cfg.logs)
+    # Determinar carpeta de logs. Prioridad:
+    #   1) cfg.logs (viene de $SIIGO_LOGS o --logs)
+    #   2) directorio del archivo de salida (--salida o primer .xlsx en params)
+    #   3) cwd
+    logs_dir = cfg.logs
+    if not logs_dir:
+        for p in params or []:
+            if isinstance(p, str) and (p.endswith(".xlsx") or p.endswith(".xls")):
+                logs_dir = str(Path(p).parent)
+                break
+    if not logs_dir:
+        logs_dir = "."
+
+    _ensure_logs_dir(logs_dir)
     ts = time.strftime("%Y%m%d_%H%M%S")
     log_name = f"ExcelSiigo_{funcion}_{ts}.log"
-    log_path = str(Path(cfg.logs) / log_name)
+    log_path = str(Path(logs_dir) / log_name)
+
+    # Crear carpetas de salida y log si no existen. El .exe de SIIGO NO
+    # crea carpetas, sale silenciosamente si la carpeta destino no existe.
+    _ensure_logs_dir(str(Path(log_path).parent))
+    for p in params or []:
+        if isinstance(p, str) and (p.endswith(".xlsx") or p.endswith(".xls")):
+            _ensure_logs_dir(str(Path(p).parent))
 
     argv = _build_argv(cfg, funcion, log_path, list(params or []))
 
@@ -194,13 +214,16 @@ def run(funcion: str, *, params: Optional[Sequence[str]] = None,
                     log_errors=["Cancelado por el usuario"],
                 )
 
-    # Ejecutar
+    # Ejecutar. NO redirigimos stdout/stderr — dejamos que el .exe
+    # escriba su propio .log (que SÍ escribe con "000 Ejecución Exitosa"
+    # cuando todo va bien). Redirigir a un pipe causaría que el log_lines
+    # se lea antes de que el .exe termine de escribir, y que el archivo
+    # final quede en 0 bytes por el handle abierto.
     start = time.time()
     try:
         completed = subprocess.run(
             argv,
-            stdout=open(log_path, "wb"),
-            stderr=subprocess.STDOUT,
+            capture_output=False,  # el .exe maneja su propio log
             check=False,
         )
         exit_code = completed.returncode
