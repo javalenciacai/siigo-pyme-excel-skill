@@ -33,3 +33,6 @@ EXCELSIIGO.CFG
 
 # Artefacto de empaquetado (regenerable con package_skill.py)
 skill.skill
+
+# Caches de herramientas locales de agentes
+.atl/

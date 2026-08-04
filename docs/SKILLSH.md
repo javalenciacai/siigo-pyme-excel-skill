@@ -1,66 +1,127 @@
-# Skills.sh — Registro del skill
+# Skills.sh — publicación e indexación
 
-Esta nota describe cómo registrar `siigo-pyme-excel` en
-[skills.sh](https://skills.sh/) una vez que el repo esté público.
+Cómo se publica `siigo-pyme-excel` en [skills.sh](https://skills.sh/) (el
+directorio de Agent Skills, CLI [`vercel-labs/skills`](https://github.com/vercel-labs/skills)).
 
-## Pasos
+## 1. Layout de discovery (crítico)
 
-1. **Confirma que el repo cumple los requisitos de skills.sh**:
-   - Repo público en GitHub.
-   - Existe `skill/SKILL.md` (o `SKILL.md` en la raíz) con frontmatter
-     YAML válido (`name` + `description`).
-   - El frontmatter `description` empieza con un verbo o resume el
-     propósito en una línea.
+El CLI (`npx skills add owner/repo`) **sólo** escanea estas ubicaciones del repo:
 
-2. **Sube el tag inicial**:
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
+- La **raíz**, si contiene `SKILL.md`.
+- `skills/` (profundidad 1), más `skills/.curated/`, `skills/.experimental/`,
+  `skills/.system/`.
+- Directorios de agente (profundidad 2): `.claude/skills/`, `.agents/skills/`,
+  `.cline/skills/`, y ~77 rutas más.
+- Cualquier otra ruta **solo** con `--full-depth`, o declarada en un manifiesto
+  de plugin (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`).
 
-3. **Regístralo en skills.sh** siguiendo su flujo (suele ser un PR al
-   índice público o un comando web). Consulta la doc oficial vigente:
-   - https://skills.sh/docs (cuando esté disponible)
-   - o el README del propio sitio.
+> ⚠️ Una carpeta `skill/` en singular **NO** se descubre. Este repo la usaba
+> hasta v0.6.3; desde v0.7.0 el skill vive en `skills/siigo-pyme-excel/`.
+> El nombre del directorio coincide con el `name` del frontmatter.
 
-4. **Verifica el renderizado** abriendo la URL pública del skill y
-   comprobando que:
-   - Aparece la descripción del frontmatter.
-   - Los links a `references/` y `scripts/` funcionan.
-   - El comando de instalación (`npx skills add ...` o similar) está
-     visible.
+Un `SKILL.md` en un nivel más superficial hace *shadow* de versiones anidadas:
+no dupliques el skill en la raíz y en `skills/`.
 
-## Snippet para el índice (ajustar al formato vigente)
+## 2. Frontmatter
 
-```yaml
-- name: siigo-pyme-excel
-  repo: <TU-USUARIO>/siigo-pyme-excel-skill
-  description: >-
-    Automatiza ExcelSIIGO.exe (CLI de SIIGO Pyme Colombia) para extraer
-    (GET*) e importar (PUSH*) datos entre SIIGO Pyme y archivos Excel.
-  tags: [siigo, pyme, colombia, excel, accounting, cli, windows]
-  install: npx skills add <TU-USUARIO>/siigo-pyme-excel-skill
-```
+Obligatorio:
 
-## Verificación local del frontmatter
+- `name` — minúsculas con guiones (`siigo-pyme-excel`).
+- `description` — una línea, con los triggers de uso. Mantenerla < 1024 chars.
 
-Antes de publicar:
+Opcional reconocido por el CLI:
+
+- `metadata.internal: true` — oculta el skill del discovery normal (requiere
+  `INSTALL_INTERNAL_SKILLS=1`). **No usar aquí.**
+
+No inventes campos extra: no se indexan.
+
+Verificación local antes de publicar:
 
 ```bash
-python -c "import yaml,sys; d=yaml.safe_load(open('skill/SKILL.md').read().split('---')[1]); print('name:',d.get('name')); print('description[:80]:',(d.get('description') or '')[:80])"
+python -c "import yaml;d=yaml.safe_load(open('skills/siigo-pyme-excel/SKILL.md',encoding='utf-8').read().split('---')[1]);print(d['name'],'|',len(d['description']),'|',list(d.keys()))"
 ```
 
-Debe imprimir algo como:
+Debe imprimir:
+
 ```
-name: siigo-pyme-excel
-description[:80]: Automatiza ExcelSIIGO.exe (CLI de SIIGO Pyme Colombia) para extraer (GET*
+siigo-pyme-excel | 956 | ['name', 'description']
 ```
 
-## Limitaciones a declarar en skills.sh
+## 3. Publicar
 
-- **Windows only**. El CLI es PE32 nativo. En otros SOs requiere Wine
-  o ejecución remota.
-- **Requiere SIIGO Pyme con licencia**. El usuario debe tener el
-  software instalado y licenciado.
-- **Operaciones PUSH son destructivas**: importan datos a la base
-  SIIGO. El wrapper pide confirmación por defecto.
+El repo debe ser **público** en GitHub. No hay paquete npm: el registro es
+GitHub mismo.
+
+```bash
+git push origin main
+git tag v0.7.0 && git push origin v0.7.0
+```
+
+## 4. Indexación: sólo por telemetría de instalación
+
+**No existe formulario ni PR de registro en skills.sh.** El catálogo se puebla
+cuando alguien instala el skill con el CLI; las auditorías de seguridad se
+generan tras la primera instalación. Para que el skill aparezca hay que
+instalarlo al menos una vez después del push:
+
+```bash
+npx skills add javalenciacai/siigo-pyme-excel-skill --skill siigo-pyme-excel
+```
+
+La indexación puede tardar unos minutos.
+
+## 5. Verificación
+
+```bash
+# 1. Discovery: debe LISTAR siigo-pyme-excel (si dice "no skills found", el layout está mal)
+npx skills add javalenciacai/siigo-pyme-excel-skill
+
+# 2. Instalación real (dispara la indexación)
+npx skills add javalenciacai/siigo-pyme-excel-skill --skill siigo-pyme-excel
+
+# 3. Confirmar instalación local
+npx skills list
+
+# 4. Confirmar que está en el catálogo remoto
+npx skills find siigo
+```
+
+Luego abrir la página pública y comprobar que rendericen la descripción del
+frontmatter, el árbol de archivos (`references/`, `scripts/`, `evals/`) y el
+comando de instalación:
+
+<https://skills.sh/javalenciacai/siigo-pyme-excel-skill/siigo-pyme-excel>
+
+## 6. API e identificadores
+
+Base: `https://skills.sh/api/v1/`
+
+| Endpoint | Uso |
+|---|---|
+| `GET /skills` | leaderboard (all-time, trending, hot) |
+| `GET /skills/search?q=` | búsqueda fuzzy / semántica |
+| `GET /skills/curated` | set curado de first-party |
+| `GET /skills/{source}/{skill}` | detalle: install count + árbol de archivos |
+| `GET /skills/audit/{source}/{skill}` | auditorías (Socket, Snyk, …) |
+
+El `id` estable tiene formato `{source}/{slug}`; para GitHub es
+`owner/repo/slug` → `javalenciacai/siigo-pyme-excel-skill/siigo-pyme-excel`.
+
+Nota: el endpoint de búsqueda responde **401** a peticiones anónimas, así que
+verifica con `npx skills find` o la web, no con `curl`.
+
+## 7. Badge para el README
+
+```markdown
+[![skills.sh](https://skills.sh/b/javalenciacai/siigo-pyme-excel-skill)](https://skills.sh/javalenciacai/siigo-pyme-excel-skill)
+```
+
+## 8. Limitaciones a declarar
+
+- **Windows only**. El CLI es PE32 nativo. En otros SOs requiere Wine o
+  ejecución remota (RDP/PSExec).
+- **Requiere SIIGO Pyme con licencia** instalada y empresa creada.
+- **Las operaciones `PUSH*` son destructivas**: importan datos a la base
+  SIIGO. El wrapper pide confirmación (`--yes`) por defecto.
+- **No es oficial de SIIGO S.A.S.**
